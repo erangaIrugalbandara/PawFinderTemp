@@ -40,12 +40,13 @@ class FirebaseService: ObservableObject {
     }
     
     func fetchLostPets(nearLocation: LocationData, radius: Double) async throws -> [LostPet] {
-        let snapshot = try await db.collection("lost_pets")
+        // Fix: Use "lostPets" collection name to match what ReportLostPetView saves to
+        let snapshot = try await db.collection("lostPets")
             .whereField("isActive", isEqualTo: true)
             .getDocuments()
         
         let pets = try snapshot.documents.compactMap { document in
-            try document.data(as: LostPet.self) // Requires LostPet to conform to Decodable
+            try document.data(as: LostPet.self)
         }
         
         return pets.filter { pet in
@@ -55,6 +56,12 @@ class FirebaseService: ObservableObject {
             )
             return distance <= radius * 1000 // Convert km to meters
         }
+    }
+
+    private func calculateDistance(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) -> Double {
+        let fromLocation = CLLocation(latitude: from.latitude, longitude: from.longitude)
+        let toLocation = CLLocation(latitude: to.latitude, longitude: to.longitude)
+        return fromLocation.distance(from: toLocation)
     }
     
     func fetchUserPets(userId: String) async throws -> [LostPet] {
@@ -118,12 +125,6 @@ class FirebaseService: ObservableObject {
         let downloadURL = try await ref.downloadURL()
         
         return downloadURL.absoluteString
-    }
-    
-    private func calculateDistance(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) -> Double {
-        let fromLocation = CLLocation(latitude: from.latitude, longitude: from.longitude)
-        let toLocation = CLLocation(latitude: to.latitude, longitude: to.longitude)
-        return fromLocation.distance(from: toLocation)
     }
 }
 

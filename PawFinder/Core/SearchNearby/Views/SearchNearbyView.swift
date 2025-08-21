@@ -2,7 +2,7 @@ import SwiftUI
 import MapKit
 
 struct SearchNearbyView: View {
-    @StateObject private var viewModel = SearchNearbyViewModel.shared // Use the shared singleton instance
+    @StateObject private var viewModel = SearchNearbyViewModel.shared
     @State private var showingFilters = false
     @Environment(\.dismiss) private var dismiss
     
@@ -11,13 +11,7 @@ struct SearchNearbyView: View {
             // Map View
             MapView(
                 region: $viewModel.mapRegion,
-                annotations: viewModel.filteredPets.map { pet in
-                    PetAnnotation(
-                        coordinate: CLLocationCoordinate2D(latitude: pet.lastSeenLocation.latitude, longitude: pet.lastSeenLocation.longitude),
-                        title: pet.name,
-                        subtitle: pet.description
-                    )
-                },
+                pets: viewModel.filteredPets,
                 userLocation: viewModel.userLocation,
                 onPetSelected: { pet in
                     viewModel.selectPet(pet)
@@ -35,7 +29,7 @@ struct SearchNearbyView: View {
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundColor(.white)
                             .frame(width: 44, height: 44)
-                            .background(Color.black.opacity(0.3))
+                            .background(Color.black.opacity(0.6))
                             .cornerRadius(22)
                     }
                     
@@ -46,7 +40,7 @@ struct SearchNearbyView: View {
                         .foregroundColor(.white)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background(Color.black.opacity(0.3))
+                        .background(Color.black.opacity(0.6))
                         .cornerRadius(20)
                     
                     Spacer()
@@ -58,7 +52,7 @@ struct SearchNearbyView: View {
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundColor(.white)
                             .frame(width: 44, height: 44)
-                            .background(Color.black.opacity(0.3))
+                            .background(Color.black.opacity(0.6))
                             .cornerRadius(22)
                     }
                 }
@@ -115,17 +109,22 @@ struct SearchNearbyView: View {
             }
         }
         .sheet(isPresented: $showingFilters) {
-            FilterView() // No need to pass viewModel; it uses the singleton instance
+            FilterView()
         }
         .sheet(isPresented: $viewModel.showingPetDetail) {
             if let pet = viewModel.selectedPet {
-                PetDetailView(pet: pet) // No need to pass viewModel; it uses the singleton instance
+                PetDetailView(pet: pet)
             }
         }
         .fullScreenCover(isPresented: $viewModel.showingSightingReport) {
             if let pet = viewModel.selectedPet {
-                SightingReportView(pet: pet) // No need to pass viewModel; it uses the singleton instance
+                SightingReportView(pet: pet)
             }
+        }
+        .alert("Thank You! 🎉", isPresented: $viewModel.showingSightingSuccess) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Your sighting report has been submitted successfully! You're helping reunite pets with their families.")
         }
         .onAppear {
             viewModel.requestLocationPermission()
@@ -135,9 +134,10 @@ struct SearchNearbyView: View {
                 viewModel.errorMessage = nil
             }
         } message: {
-            Text(viewModel.errorMessage ?? "")
+            if let errorMessage = viewModel.errorMessage {
+                Text(errorMessage)
+            }
         }
-        .navigationBarHidden(true)
     }
 }
 

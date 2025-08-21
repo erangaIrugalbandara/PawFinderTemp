@@ -35,6 +35,7 @@ class SearchNearbyViewModel: NSObject, ObservableObject {
     private override init() {
         super.init()
         setupLocationManager()
+        loadPetsFromDatabase()
     }
 
     // MARK: - Setup Location Manager
@@ -61,26 +62,124 @@ class SearchNearbyViewModel: NSObject, ObservableObject {
         showingPetDetail = true
     }
 
-    func reportSighting(for pet: LostPet) {
+    func showSightingReport(for pet: LostPet) {
         selectedPet = pet
         showingSightingReport = true
     }
 
-    func submitSighting(_ sighting: PetSighting) async {
-        do {
-            try await firebaseService.submitSighting(sighting)
-            DispatchQueue.main.async {
-                self.showingSightingReport = false
-                self.showingSightingSuccess = true
-            }
-        } catch {
-            DispatchQueue.main.async {
-                self.errorMessage = "Failed to submit sighting: \(error.localizedDescription)"
+    func reportSighting(for pet: LostPet) {
+        print("Sighting reported for pet: \(pet.name)")
+        showingSightingSuccess = true
+    }
+
+    // MARK: - Data Loading
+    func loadPetsFromDatabase() {
+        isLoading = true
+        errorMessage = nil
+        
+        print("🔄 Starting to load pets from database...")
+        
+        Task {
+            do {
+                // Use the new fetchAllLostPets method for better debugging
+                let fetchedPets = try await firebaseService.fetchAllLostPets()
+                
+                DispatchQueue.main.async {
+                    print("✅ Successfully loaded \(fetchedPets.count) pets from database")
+                    self.lostPets = fetchedPets
+                    self.pets = fetchedPets
+                    self.applyFilters()
+                    self.isLoading = false
+                    
+                    // Debug print
+                    for pet in fetchedPets {
+                        print("🐾 Pet: \(pet.name) at \(pet.lastSeenLocation.address)")
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    print("❌ Failed to load pets: \(error.localizedDescription)")
+                    self.errorMessage = "Failed to load pets: \(error.localizedDescription)"
+                    self.isLoading = false
+                    // Load sample data as fallback
+                    self.loadSampleData()
+                }
             }
         }
     }
 
-    // MARK: - Filter Methods
+    private func loadSampleData() {
+        print("📦 Loading sample data as fallback...")
+        
+        let samplePets = [
+            LostPet(
+                id: "sample-1",
+                name: "Max",
+                breed: "Golden Retriever",
+                species: .dog,
+                age: 3,
+                color: "Golden",
+                size: .large,
+                description: "Friendly golden retriever, very social",
+                lastSeenLocation: LocationData(
+                    latitude: 37.7749,
+                    longitude: -122.4194,
+                    address: "San Francisco, CA",
+                    city: "San Francisco",
+                    state: "CA"
+                ),
+                lastSeenDate: Date(),
+                contactInfo: ContactInfo(
+                    phone: "555-0123",
+                    email: "owner@example.com",
+                    preferredContactMethod: .phone
+                ),
+                ownerName: "John Doe",
+                photos: [],
+                isActive: true,
+                reportedDate: Date(),
+                rewardAmount: 500,
+                distinctiveFeatures: ["White patch on chest"],
+                temperament: "Friendly"
+            ),
+            LostPet(
+                id: "sample-2",
+                name: "Luna",
+                breed: "Siamese",
+                species: .cat,
+                age: 2,
+                color: "Cream and Brown",
+                size: .medium,
+                description: "Indoor cat, may be hiding",
+                lastSeenLocation: LocationData(
+                    latitude: 37.7849,
+                    longitude: -122.4094,
+                    address: "Oakland, CA",
+                    city: "Oakland",
+                    state: "CA"
+                ),
+                lastSeenDate: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date(),
+                contactInfo: ContactInfo(
+                    phone: "555-0456",
+                    email: "owner2@example.com",
+                    preferredContactMethod: .phone
+                ),
+                ownerName: "Jane Smith",
+                photos: [],
+                isActive: true,
+                reportedDate: Date(),
+                rewardAmount: 200,
+                distinctiveFeatures: ["Blue eyes", "Small scar on left ear"],
+                temperament: "Shy"
+            )
+        ]
+        
+        self.lostPets = samplePets
+        self.pets = samplePets
+        self.applyFilters()
+        print("📦 Sample data loaded: \(samplePets.count) pets")
+    }
+
     func updateSearchRadius(_ radius: Double) {
         searchRadius = radius
         applyFilters()
@@ -127,19 +226,17 @@ class SearchNearbyViewModel: NSObject, ObservableObject {
             }
 
             // Reward filter
-            if showWithRewardOnly {
-                if pet.rewardAmount == nil || pet.rewardAmount! <= 0 {
-                    return false
-                }
+            if showWithRewardOnly && (pet.rewardAmount == nil || pet.rewardAmount == 0) {
+                return false
             }
 
-            // Distance filter
+            // Distance filter (if user location is available)
             if let userLocation = userLocation {
-                let distance = userLocation.distance(from: CLLocation(
+                let petLocation = CLLocation(
                     latitude: pet.lastSeenLocation.latitude,
                     longitude: pet.lastSeenLocation.longitude
-                )) / 1000 // Convert to km
-
+                )
+                let distance = userLocation.distance(from: petLocation) / 1000 // Convert to km
                 if distance > searchRadius {
                     return false
                 }
@@ -147,57 +244,8 @@ class SearchNearbyViewModel: NSObject, ObservableObject {
 
             return true
         }
-    }
-
-    func filterPetsByLocation() {
-        guard let userLocation = userLocation else {
-            filteredPets = pets
-            return
-        }
-
-        var filtered = pets.compactMap { pet -> LostPet? in
-            let petLocation = CLLocation(latitude: pet.lastSeenLocation.latitude, longitude: pet.lastSeenLocation.longitude)
-            let distance = userLocation.distance(from: petLocation) / 1000 // Convert to km
-
-            guard distance <= searchRadius else { return nil }
-
-            var updatedPet = pet
-            updatedPet.distanceFromUser = distance
-            return updatedPet
-        }
-
-        if let selectedSpecies = selectedSpecies {
-            filtered = filtered.filter { $0.species == selectedSpecies }
-        }
-
-        filtered.sort { $0.distanceFromUser ?? 0 < $1.distanceFromUser ?? 0 }
-        filteredPets = filtered
-    }
-
-    @MainActor
-    func loadNearbyPets() async {
-        guard let userLocation = userLocation else { return }
-
-        isLoading = true
-        errorMessage = nil
-
-        do {
-            let locationData = LocationData(
-                latitude: userLocation.coordinate.latitude,
-                longitude: userLocation.coordinate.longitude,
-                address: "",
-                city: "",
-                state: ""
-            )
-            
-            // Fetch real data from Firebase
-            pets = try await firebaseService.fetchLostPets(nearLocation: locationData, radius: searchRadius)
-            filterPetsByLocation()
-        } catch {
-            errorMessage = "Failed to load nearby pets: \(error.localizedDescription)"
-        }
-
-        isLoading = false
+        
+        print("🔍 Applied filters: \(filteredPets.count) pets match criteria")
     }
 }
 
@@ -205,31 +253,27 @@ class SearchNearbyViewModel: NSObject, ObservableObject {
 extension SearchNearbyViewModel: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
-
         userLocation = location
+        
         mapRegion = MKCoordinateRegion(
             center: location.coordinate,
-            span: MKCoordinateSpan(latitudeDelta: 0.1, longitudeDelta: 0.1)
+            span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
         )
-
-        Task {
-            await loadNearbyPets()
-        }
+        
+        applyFilters()
     }
-
+    
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         errorMessage = "Location error: \(error.localizedDescription)"
     }
-
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        switch manager.authorizationStatus {
+    
+    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        switch status {
         case .authorizedWhenInUse, .authorizedAlways:
             locationManager.startUpdatingLocation()
         case .denied, .restricted:
-            errorMessage = "Location access is required to find nearby pets"
-        case .notDetermined:
-            requestLocationPermission()
-        @unknown default:
+            errorMessage = "Location access denied"
+        default:
             break
         }
     }

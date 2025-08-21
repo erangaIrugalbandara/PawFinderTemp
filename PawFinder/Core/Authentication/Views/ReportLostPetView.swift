@@ -4,6 +4,7 @@ import MapKit
 import CoreLocation
 import FirebaseStorage
 import FirebaseFirestore
+import FirebaseAuth
 
 struct ReportLostPetView: View {
     @Environment(\.dismiss) private var dismiss
@@ -237,20 +238,38 @@ struct ReportLostPetView: View {
             
             Task {
                 do {
-                    let db = Firestore.firestore()
-                    // Use setData(from:) instead of toDictionary() since LostPet conforms to Codable
-                    try await db.collection("lostPets").document(lostPet.id).setData(from: lostPet)
-                    
-                    DispatchQueue.main.async {
-                        isSubmitting = false
-                        showSuccessAlert = true
+                        let db = Firestore.firestore()
+                        
+                        // First save the pet using the FirebaseService method
+                        try await FirebaseService().submitLostPetReport(report: lostPet)
+                        
+                        // Then add the ownerID field separately (since it's not in the LostPet model)
+                        try await db.collection("lostPets").document(lostPet.id).updateData([
+                            "ownerID": Auth.auth().currentUser?.uid ?? "unknown"
+                        ])
+                        
+                        DispatchQueue.main.async {
+                            isSubmitting = false
+                            //showingSuccessAlert = true
+                            
+                            // Clear the form
+                            petName = ""
+                            breed = ""
+                            petDescription = ""
+                            petAge = ""
+                            petColor = ""
+                            distinctiveFeatures = ""
+                            reward = ""
+                            contactInfo = ""
+                            selectedPhotos = []
+                            photoImages = []
+                        }
+                    } catch {
+                        DispatchQueue.main.async {
+                            isSubmitting = false
+                            errorMessage = "Failed to submit report: \(error.localizedDescription)"
+                        }
                     }
-                } catch {
-                    DispatchQueue.main.async {
-                        isSubmitting = false
-                        errorMessage = "Failed to submit report: \(error.localizedDescription)"
-                    }
-                }
             }
         }
     }

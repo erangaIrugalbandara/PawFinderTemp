@@ -9,44 +9,22 @@ class FirebaseService: ObservableObject {
     private let storage = Storage.storage()
     
     func submitLostPetReport(report: LostPet) async throws {
-        let data: [String: Any] = [
-            "id": report.id,
-            "name": report.name,
-            "breed": report.breed,
-            "species": report.species.rawValue,
-            "age": report.age,
-            "color": report.color,
-            "size": report.size.rawValue,
-            "description": report.description,
-            "lastSeenLocation": [
-                "latitude": report.lastSeenLocation.latitude,
-                "longitude": report.lastSeenLocation.longitude,
-                "address": report.lastSeenLocation.address
-            ],
-            "lastSeenDate": report.lastSeenDate,
-            "contactInfo": [
-                "phone": report.contactInfo.phone,
-                "email": report.contactInfo.email,
-                "preferredContactMethod": report.contactInfo.preferredContactMethod.rawValue
-            ],
-            "isActive": report.isActive,
-            "reportedDate": report.reportedDate,
-            "rewardAmount": report.rewardAmount ?? 0.0,
-            "distinctiveFeatures": report.distinctiveFeatures,
-            "temperament": report.temperament
-        ]
-
-        try await db.collection("lostPets").document(report.id).setData(data)
+        // Use setData(from:) to ensure proper Codable encoding
+        try await db.collection("lostPets").document(report.id).setData(from: report)
     }
     
     func fetchLostPets(nearLocation: LocationData, radius: Double) async throws -> [LostPet] {
-        // Fix: Use "lostPets" collection name to match what ReportLostPetView saves to
         let snapshot = try await db.collection("lostPets")
             .whereField("isActive", isEqualTo: true)
             .getDocuments()
         
-        let pets = try snapshot.documents.compactMap { document in
-            try document.data(as: LostPet.self)
+        let pets = try snapshot.documents.compactMap { document -> LostPet? in
+            do {
+                return try document.data(as: LostPet.self)
+            } catch {
+                print("Error decoding pet document \(document.documentID): \(error)")
+                return nil
+            }
         }
         
         return pets.filter { pet in
@@ -58,6 +36,30 @@ class FirebaseService: ObservableObject {
         }
     }
 
+    // Add this new method to fetch ALL lost pets (for debugging/testing)
+    func fetchAllLostPets() async throws -> [LostPet] {
+        let snapshot = try await db.collection("lostPets")
+            .whereField("isActive", isEqualTo: true)
+            .getDocuments()
+        
+        print("🔍 Found \(snapshot.documents.count) documents in lostPets collection")
+        
+        let pets = try snapshot.documents.compactMap { document -> LostPet? in
+            do {
+                let pet = try document.data(as: LostPet.self)
+                print("✅ Successfully decoded pet: \(pet.name)")
+                return pet
+            } catch {
+                print("❌ Error decoding pet document \(document.documentID): \(error)")
+                print("📄 Document data: \(document.data())")
+                return nil
+            }
+        }
+        
+        print("🐾 Returning \(pets.count) decoded pets")
+        return pets
+    }
+
     private func calculateDistance(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) -> Double {
         let fromLocation = CLLocation(latitude: from.latitude, longitude: from.longitude)
         let toLocation = CLLocation(latitude: to.latitude, longitude: to.longitude)
@@ -65,27 +67,30 @@ class FirebaseService: ObservableObject {
     }
     
     func fetchUserPets(userId: String) async throws -> [LostPet] {
-        let snapshot = try await db.collection("lost_pets")
+        // Fix: Use "lostPets" collection name to match where data is saved
+        let snapshot = try await db.collection("lostPets")
             .whereField("ownerID", isEqualTo: userId)
             .order(by: "reportedDate", descending: true)
             .getDocuments()
         
         return try snapshot.documents.compactMap { document in
-            try document.data(as: LostPet.self) // Requires LostPet to conform to Decodable
+            try document.data(as: LostPet.self)
         }
     }
     
     func updatePetStatus(petId: String, isActive: Bool) async throws {
-        try await db.collection("lost_pets").document(petId).updateData([
+        // Fix: Use "lostPets" collection name
+        try await db.collection("lostPets").document(petId).updateData([
             "isActive": isActive,
             "foundDate": isActive ? FieldValue.delete() : FieldValue.serverTimestamp()
         ])
     }
-    
+
     func submitSighting(_ sighting: PetSighting) async throws {
-        try await db.collection("sightings").document(sighting.id).setData(from: sighting) // Requires PetSighting to conform to Encodable
+        try await db.collection("sightings").document(sighting.id).setData(from: sighting)
         
-        let petRef = db.collection("lost_pets").document(sighting.petId)
+        // Fix: Use "lostPets" collection name
+        let petRef = db.collection("lostPets").document(sighting.petId)
         try await petRef.updateData([
             "sightingCount": FieldValue.increment(Int64(1)),
             "lastSightingDate": sighting.sightingDate
@@ -99,7 +104,7 @@ class FirebaseService: ObservableObject {
             .getDocuments()
         
         return try snapshot.documents.compactMap { document in
-            try document.data(as: PetSighting.self) // Requires PetSighting to conform to Decodable
+            try document.data(as: PetSighting.self)
         }
     }
     

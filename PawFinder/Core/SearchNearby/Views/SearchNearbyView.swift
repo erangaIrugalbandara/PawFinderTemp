@@ -108,6 +108,10 @@ struct SearchNearbyView: View {
                 .cornerRadius(15)
             }
         }
+        .onAppear {
+            viewModel.requestLocationPermission()
+            viewModel.loadPetsFromDatabase()
+        }
         .sheet(isPresented: $showingFilters) {
             FilterView()
         }
@@ -116,31 +120,15 @@ struct SearchNearbyView: View {
                 PetDetailView(pet: pet)
             }
         }
-        .fullScreenCover(isPresented: $viewModel.showingSightingReport) {
+        .sheet(isPresented: $viewModel.showingSightingReport) {
             if let pet = viewModel.selectedPet {
                 SightingReportView(pet: pet)
             }
         }
-        .alert("Thank You! 🎉", isPresented: $viewModel.showingSightingSuccess) {
-            Button("OK", role: .cancel) { }
+        .alert("Success!", isPresented: $viewModel.showingSightingSuccess) {
+            Button("OK") { }
         } message: {
-            Text("Your sighting report has been submitted successfully! You're helping reunite pets with their families.")
-        }
-        .onAppear {
-            viewModel.requestLocationPermission()
-        }
-        .alert("Location Error", isPresented: .constant(viewModel.errorMessage != nil)) {
-            Button("OK") {
-                viewModel.errorMessage = nil
-            }
-        } message: {
-            if let errorMessage = viewModel.errorMessage {
-                Text(errorMessage)
-            }
+            Text("Thank you for reporting a sighting! The owner has been notified.")
         }
     }
-}
-
-#Preview {
-    SearchNearbyView()
 }

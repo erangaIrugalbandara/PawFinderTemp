@@ -153,38 +153,53 @@ struct PetDetailView: View {
     // MARK: - Quick Actions
     private var quickActions: some View {
         HStack(spacing: 16) {
-            // Report Sighting Button
             Button(action: {
-                viewModel.showingPetDetail = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    viewModel.reportSighting(for: pet)
-                }
+                viewModel.showSightingReport(for: pet)
             }) {
                 HStack(spacing: 8) {
                     Image(systemName: "eye.fill")
+                        .font(.system(size: 16))
                     Text("Report Sighting")
+                        .font(.system(size: 16, weight: .semibold))
                 }
-                .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(Color.blue)
+                .frame(height: 48)
+                .background(
+                    LinearGradient(
+                        colors: [Color.blue, Color.blue.opacity(0.8)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
                 .cornerRadius(12)
             }
-
-            // Call Owner Button
-            Button(action: { callOwner() }) {
+            
+            Button(action: {
+                callOwner()
+            }) {
                 HStack(spacing: 8) {
                     Image(systemName: "phone.fill")
-                    Text("Call")
+                        .font(.system(size: 16))
+                    Text("Call Owner")
+                        .font(.system(size: 16, weight: .semibold))
                 }
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(.white)
+                .foregroundColor(.blue)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(Color.green)
+                .frame(height: 48)
+                .background(Color.blue.opacity(0.1))
                 .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.blue, lineWidth: 1)
+                )
             }
+        }
+    }
+
+    private func callOwner() {
+        if let url = URL(string: "tel://\(pet.contactInfo)") {
+            UIApplication.shared.open(url)
         }
     }
 
@@ -298,13 +313,6 @@ struct PetDetailView: View {
         }
 
         return "Distance unknown"
-    }
-
-    private func callOwner() {
-        guard let phoneURL = URL(string: "tel://\(pet.contactInfo.phone)") else { return }
-        if UIApplication.shared.canOpenURL(phoneURL) {
-            UIApplication.shared.open(phoneURL)
-        }
     }
 
     private func sharePet() {

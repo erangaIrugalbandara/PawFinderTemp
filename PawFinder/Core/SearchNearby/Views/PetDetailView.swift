@@ -273,13 +273,13 @@ struct PetDetailView: View {
     // MARK: - Helper Functions
     private func distanceString(for pet: LostPet) -> String {
         // Use the existing distanceFromUser property if available
-        if pet.distanceFromUser > 0 {
-            if pet.distanceFromUser < 0.1 {
+        if let distance = pet.distanceFromUser, distance > 0 {
+            if distance < 0.1 {
                 return "Nearby"
-            } else if pet.distanceFromUser < 1.0 {
-                return String(format: "%.1f mi", pet.distanceFromUser)
+            } else if distance < 1.0 {
+                return String(format: "%.1f mi", distance)
             } else {
-                return String(format: "%.0f mi", pet.distanceFromUser)
+                return String(format: "%.0f mi", distance)
             }
         }
 
@@ -352,10 +352,10 @@ struct DetailRow: View {
             id: "1",
             name: "Buddy",
             breed: "Golden Retriever",
-            species: .dog,
+            species: PetSpecies.dog, // Use explicit type
             age: 3,
             color: "Golden",
-            size: .large,
+            size: PetSize.large, // Use explicit type
             description: "Friendly golden retriever",
             lastSeenLocation: LocationData(
                 latitude: 37.7749,
@@ -368,7 +368,7 @@ struct DetailRow: View {
             contactInfo: ContactInfo(
                 phone: "(555) 123-4567",
                 email: "owner@email.com",
-                preferredContactMethod: .phone
+                preferredContactMethod: ContactMethod.phone // Use explicit type
             ),
             ownerName: "John Doe",
             photos: [],

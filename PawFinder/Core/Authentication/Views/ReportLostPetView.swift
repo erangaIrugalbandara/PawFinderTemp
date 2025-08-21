@@ -208,48 +208,48 @@ struct ReportLostPetView: View {
                 return
             }
             
-            let contactInfo = ContactInfo(
-                phone: "(555) 123-4567",
-                email: "owner@example.com",
+            let contactInfoStruct = ContactInfo(
+                phone: contactInfo.isEmpty ? "(555) 123-4567" : contactInfo,
+                email: "owner@example.com", // You may want to add an email field to your form
                 preferredContactMethod: .phone
             )
 
             let lostPet = LostPet(
                 id: UUID().uuidString,
-                name: "Buddy",
-                breed: "Golden Retriever",
-                species: .dog,
-                age: 3,
-                color: "Golden",
-                size: .large,
-                description: "Friendly golden retriever",
-                lastSeenLocation: LocationData(
-                    latitude: 37.7749,
-                    longitude: -122.4194,
-                    address: "San Francisco",
-                    city: "San Francisco",
-                    state: "CA"
-                ),
-                lastSeenDate: Date(),
-                contactInfo: contactInfo, // Add this parameter
-                ownerName: "John Doe",
-                photos: [],
+                name: petName,
+                breed: breed,
+                species: selectedSpecies,
+                age: Int(petAge) ?? 0,
+                color: petColor,
+                size: petSize,
+                description: petDescription,
+                lastSeenLocation: locationData,
+                lastSeenDate: lastSeenDate,
+                contactInfo: contactInfoStruct,
+                ownerName: "Pet Owner", // You may want to add an owner name field
+                photos: photoURLs ?? [],
                 isActive: true,
                 reportedDate: Date(),
-                rewardAmount: 500.0,
-                distinctiveFeatures: ["Blue collar"],
-                temperament: "Friendly"
+                rewardAmount: Double(reward),
+                distinctiveFeatures: distinctiveFeatures.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) },
+                temperament: "Friendly" // You may want to add a temperament field
             )
             
             Task {
                 do {
                     let db = Firestore.firestore()
-                    try await db.collection("lostPets").document(lostPet.id).setData(lostPet.toDictionary())
-                    isSubmitting = false
-                    showSuccessAlert = true
+                    // Use setData(from:) instead of toDictionary() since LostPet conforms to Codable
+                    try await db.collection("lostPets").document(lostPet.id).setData(from: lostPet)
+                    
+                    DispatchQueue.main.async {
+                        isSubmitting = false
+                        showSuccessAlert = true
+                    }
                 } catch {
-                    isSubmitting = false
-                    errorMessage = "Failed to submit report: \(error.localizedDescription)"
+                    DispatchQueue.main.async {
+                        isSubmitting = false
+                        errorMessage = "Failed to submit report: \(error.localizedDescription)"
+                    }
                 }
             }
         }

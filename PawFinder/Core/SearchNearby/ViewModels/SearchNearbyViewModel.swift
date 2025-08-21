@@ -168,19 +168,19 @@ class SearchNearbyViewModel: NSObject, ObservableObject {
             size: PetSize(rawValue: report.petSize) ?? .medium,
             description: report.description,
             lastSeenLocation: LocationData(
-                latitude: report.lastSeenLocation.latitude,
-                longitude: report.lastSeenLocation.longitude,
-                address: report.lastSeenLocation.address,
-                city: "",
-                state: ""
+                latitude: userLocation?.coordinate.latitude ?? 37.7749, // Use user location or default
+                longitude: userLocation?.coordinate.longitude ?? -122.4194, // Use user location or default
+                address: "Location not specified", // Default address since PetReport doesn't have location
+                city: "Unknown",
+                state: "Unknown"
             ),
             lastSeenDate: report.lastSeenDate,
             contactInfo: ContactInfo(
-                phone: "",
+                phone: "", // PetReport doesn't have contact info
                 email: "",
                 preferredContactMethod: .both
             ),
-            ownerName: "",
+            ownerName: "", // PetReport doesn't have owner name
             photos: report.photos,
             isActive: true,
             reportedDate: report.dateReported,
@@ -192,7 +192,7 @@ class SearchNearbyViewModel: NSObject, ObservableObject {
         lostPets.append(newPet)
         filterPetsByLocation()
     }
-
+    
     @MainActor
     func loadNearbyPets() async {
         guard let userLocation = userLocation else { return }
@@ -294,4 +294,7 @@ struct PetReport {
     let photos: [String]
     let reward: String?
     let dateReported: Date
+    let lastSeenLocation: LocationData // Add this property
+    let ownerName: String // Add this if needed
+    let contactInfo: ContactInfo // Add this if needed
 }

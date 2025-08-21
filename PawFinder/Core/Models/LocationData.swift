@@ -1,17 +1,14 @@
 import Foundation
+import CoreLocation
 
-struct LocationData: Decodable {
+struct LocationData: Codable {
     let latitude: Double
     let longitude: Double
     let address: String
     let city: String
     let state: String
-
-    private enum CodingKeys: String, CodingKey {
-        case latitude
-        case longitude
-        case address
-        case city
-        case state
+    
+    var coordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
 }

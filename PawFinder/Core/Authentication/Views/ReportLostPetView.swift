@@ -245,12 +245,13 @@ struct ReportLostPetView: View {
                         
                         // Then add the ownerID field separately (since it's not in the LostPet model)
                         try await db.collection("lostPets").document(lostPet.id).updateData([
-                            "ownerID": Auth.auth().currentUser?.uid ?? "unknown"
+                            "ownerID": FirebaseAuth.Auth.auth().currentUser?.uid ?? "unknown"
                         ])
                         
                         DispatchQueue.main.async {
+                            showingMapPicker = false 
                             isSubmitting = false
-                            //showingSuccessAlert = true
+                            showSuccessAlert = true
                             
                             // Clear the form
                             petName = ""

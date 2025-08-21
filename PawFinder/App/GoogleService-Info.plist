@@ -26,5 +26,7 @@
 	<true/>
 	<key>GOOGLE_APP_ID</key>
 	<string>1:809474027131:ios:d162901b6cf32eb0083cde</string>
+	<key>NSUserNotificationUsageDescription</key>
+	<string>PawFinder would like to send you notifications to thank you for your community contributions and remind you about lost pets that need help.</string>
 </dict>
 </plist>

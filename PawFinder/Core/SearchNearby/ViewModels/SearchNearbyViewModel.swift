@@ -57,7 +57,13 @@ class SearchNearbyViewModel: NSObject, ObservableObject {
         )
     }
 
+    // Fixed method name to match the usage in SearchNearbyView
     func selectPet(_ pet: LostPet) {
+        selectedPet = pet
+        showingPetDetail = true
+    }
+
+    func showPetDetail(_ pet: LostPet) {
         selectedPet = pet
         showingPetDetail = true
     }
@@ -68,8 +74,9 @@ class SearchNearbyViewModel: NSObject, ObservableObject {
     }
 
     func reportSighting(for pet: LostPet) {
-        print("Sighting reported for pet: \(pet.name)")
-        showingSightingSuccess = true
+        print("🎯 Sighting reported for pet: \(pet.name)")
+        // Here you would typically send the sighting data to your backend
+        // The success notification is now handled within SightingReportView
     }
 
     // MARK: - Data Loading
@@ -128,7 +135,7 @@ class SearchNearbyViewModel: NSObject, ObservableObject {
                     city: "San Francisco",
                     state: "CA"
                 ),
-                lastSeenDate: Date(),
+                lastSeenDate: Calendar.current.date(byAdding: .day, value: -2, to: Date()) ?? Date(),
                 contactInfo: ContactInfo(
                     phone: "555-0123",
                     email: "owner@example.com",
@@ -139,18 +146,18 @@ class SearchNearbyViewModel: NSObject, ObservableObject {
                 isActive: true,
                 reportedDate: Date(),
                 rewardAmount: 500,
-                distinctiveFeatures: ["White patch on chest"],
-                temperament: "Friendly"
+                distinctiveFeatures: ["White patch on chest", "Friendly with children"],
+                temperament: "Very friendly"
             ),
             LostPet(
                 id: "sample-2",
                 name: "Luna",
-                breed: "Siamese",
-                species: .cat,
+                breed: "Husky",
+                species: .dog,
                 age: 2,
-                color: "Cream and Brown",
+                color: "Gray and White",
                 size: .medium,
-                description: "Indoor cat, may be hiding",
+                description: "Energetic husky with blue eyes",
                 lastSeenLocation: LocationData(
                     latitude: 37.7849,
                     longitude: -122.4094,
@@ -257,24 +264,13 @@ extension SearchNearbyViewModel: CLLocationManagerDelegate {
         
         mapRegion = MKCoordinateRegion(
             center: location.coordinate,
-            span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+            span: MKCoordinateSpan(latitudeDelta: 0.1, longitudeDelta: 0.1)
         )
         
         applyFilters()
     }
     
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        errorMessage = "Location error: \(error.localizedDescription)"
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
-        switch status {
-        case .authorizedWhenInUse, .authorizedAlways:
-            locationManager.startUpdatingLocation()
-        case .denied, .restricted:
-            errorMessage = "Location access denied"
-        default:
-            break
-        }
+        print("❌ Location error: \(error.localizedDescription)")
     }
 }

@@ -5,6 +5,7 @@ struct SightingReportView: View {
     let pet: LostPet
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = SearchNearbyViewModel.shared
+    @StateObject private var notificationManager = NotificationManager.shared
     
     @State private var sightingDate = Date()
     @State private var sightingLocation = ""
@@ -13,6 +14,8 @@ struct SightingReportView: View {
     @State private var reporterContact = ""
     @State private var selectedCoordinate: CLLocationCoordinate2D?
     @State private var showingMapPicker = false
+    @State private var showingSuccessNotification = false
+    @State private var isSubmitting = false
     
     var body: some View {
         NavigationView {
@@ -46,6 +49,33 @@ struct SightingReportView: View {
                 selectedAddress: $sightingLocation
             )
         }
+        .overlay(
+            // Enhanced Success Notification Overlay (kept for immediate feedback)
+            ZStack {
+                if showingSuccessNotification {
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                showingSuccessNotification = false
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                dismiss()
+                            }
+                        }
+                    
+                    QuickSuccessView(
+                        petName: pet.name,
+                        isPresented: $showingSuccessNotification,
+                        onDismiss: {
+                            dismiss()
+                        }
+                    )
+                    .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .animation(.spring(response: 0.6, dampingFraction: 0.8), value: showingSuccessNotification)
+        )
     }
     
     private var petInfoHeader: some View {
@@ -170,22 +200,29 @@ struct SightingReportView: View {
         Button(action: {
             submitSighting()
         }) {
-            Text("Submit Sighting Report")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 56)
-                .background(
-                    LinearGradient(
-                        colors: [Color.blue, Color.blue.opacity(0.8)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
+            HStack {
+                if isSubmitting {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                        .foregroundColor(.white)
+                }
+                Text(isSubmitting ? "Submitting..." : "Submit Sighting Report")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 56)
+            .background(
+                LinearGradient(
+                    colors: [Color.blue, Color.blue.opacity(0.8)],
+                    startPoint: .leading,
+                    endPoint: .trailing
                 )
-                .cornerRadius(16)
+            )
+            .cornerRadius(16)
         }
-        .disabled(!isFormValid)
-        .opacity(isFormValid ? 1.0 : 0.6)
+        .disabled(!isFormValid || isSubmitting)
+        .opacity(isFormValid && !isSubmitting ? 1.0 : 0.6)
     }
     
     private var isFormValid: Bool {
@@ -193,8 +230,81 @@ struct SightingReportView: View {
     }
     
     private func submitSighting() {
-        // Here you would typically send the sighting data to your backend
-        viewModel.reportSighting(for: pet)
-        dismiss()
+        isSubmitting = true
+        
+        // Simulate API call delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            // Report sighting to backend
+            viewModel.reportSighting(for: pet)
+            
+            // Schedule phone notification
+            notificationManager.scheduleThankYouNotification(petName: pet.name)
+            
+            // Schedule follow-up hero notification
+            notificationManager.scheduleDelayedHeroNotification(petName: pet.name)
+            
+            isSubmitting = false
+            
+            // Show quick in-app confirmation
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                showingSuccessNotification = true
+            }
+            
+            // Auto-dismiss after 3 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    showingSuccessNotification = false
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    dismiss()
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Quick Success View (simplified version for quick feedback)
+struct QuickSuccessView: View {
+    let petName: String
+    @Binding var isPresented: Bool
+    let onDismiss: () -> Void
+    
+    @State private var animateHeart = false
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            // Animated Heart Icon
+            Image(systemName: "heart.fill")
+                .font(.system(size: 50))
+                .foregroundColor(.red)
+                .scaleEffect(animateHeart ? 1.2 : 1.0)
+                .animation(
+                    Animation.easeInOut(duration: 0.8)
+                        .repeatForever(autoreverses: true),
+                    value: animateHeart
+                )
+            
+            VStack(spacing: 12) {
+                Text("🎉 Report Submitted!")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(.primary)
+                
+                Text("Thank you for helping \(petName)!\nCheck your notifications for more details.")
+                    .font(.system(size: 16))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+            }
+        }
+        .padding(30)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color(.systemBackground))
+                .shadow(color: Color.black.opacity(0.1), radius: 20, x: 0, y: 10)
+        )
+        .padding(.horizontal, 40)
+        .onAppear {
+            animateHeart = true
+        }
     }
 }

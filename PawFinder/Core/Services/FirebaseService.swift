@@ -8,9 +8,24 @@ class FirebaseService: ObservableObject {
     private let db = Firestore.firestore()
     private let storage = Storage.storage()
     
+    func saveLostPet(_ pet: LostPet) async throws {
+        try await db.collection("lostPets").document(pet.id).setData(from: pet)
+    }
+    
     func submitLostPetReport(report: LostPet) async throws {
         // Use setData(from:) to ensure proper Codable encoding
         try await db.collection("lostPets").document(report.id).setData(from: report)
+    }
+    
+    func fetchLostPets() async throws -> [LostPet] {
+        let snapshot = try await db.collection("lostPets")
+            .whereField("isActive", isEqualTo: true)
+            .order(by: "reportedDate", descending: true)
+            .getDocuments()
+        
+        return try snapshot.documents.compactMap { document in
+            try document.data(as: LostPet.self)
+        }
     }
     
     func fetchLostPets(nearLocation: LocationData, radius: Double) async throws -> [LostPet] {
@@ -36,7 +51,7 @@ class FirebaseService: ObservableObject {
         }
     }
 
-    // Add this new method to fetch ALL lost pets (for debugging/testing)
+    // Add this method that was missing - this is what SearchNearbyViewModel is calling
     func fetchAllLostPets() async throws -> [LostPet] {
         let snapshot = try await db.collection("lostPets")
             .whereField("isActive", isEqualTo: true)
@@ -59,7 +74,33 @@ class FirebaseService: ObservableObject {
         print("🐾 Returning \(pets.count) decoded pets")
         return pets
     }
-
+    
+    func uploadPetImages(_ images: [UIImage], petId: String) async throws -> [String] {
+        var imageURLs: [String] = []
+        
+        for (index, image) in images.enumerated() {
+            let path = "pet_photos/\(petId)/image_\(index).jpg"
+            let url = try await uploadImage(image, path: path)
+            imageURLs.append(url)
+        }
+        
+        return imageURLs
+    }
+    
+    func fetchNearbyLostPets(userLocation: CLLocationCoordinate2D, radiusInKm: Double = 50.0) async throws -> [LostPet] {
+        // For now, fetch all active pets and filter by distance
+        // In production, consider using GeoFirestore for better performance
+        let allPets = try await fetchLostPets()
+        
+        return allPets.filter { pet in
+            let distance = calculateDistance(
+                from: userLocation,
+                to: CLLocationCoordinate2D(latitude: pet.lastSeenLocation.latitude, longitude: pet.lastSeenLocation.longitude)
+            )
+            return distance <= radiusInKm * 1000 // Convert km to meters
+        }
+    }
+    
     private func calculateDistance(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D) -> Double {
         let fromLocation = CLLocation(latitude: from.latitude, longitude: from.longitude)
         let toLocation = CLLocation(latitude: to.latitude, longitude: to.longitude)

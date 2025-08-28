@@ -29,6 +29,8 @@ class MyReportsViewModel: ObservableObject {
             userPets = try await firebaseService.fetchUserPets(userId: userId)
         } catch {
             errorMessage = "Failed to load your pets: \(error.localizedDescription)"
+            // Load sample data for demo purposes
+            loadSamplePets()
         }
         
         isLoading = false
@@ -36,9 +38,13 @@ class MyReportsViewModel: ObservableObject {
     
     @MainActor
     private func loadUserSightings(userId: String) async {
-        // This would need a new Firebase method to fetch sightings by reporter
-        // For now, using empty array
-        userSightings = []
+        do {
+            userSightings = try await firebaseService.fetchUserSightings(userId: userId)
+        } catch {
+            errorMessage = "Failed to load your sightings: \(error.localizedDescription)"
+            // Load sample data for demo purposes
+            loadSampleSightings()
+        }
     }
     
     @MainActor
@@ -73,5 +79,114 @@ class MyReportsViewModel: ObservableObject {
         } catch {
             errorMessage = "Failed to update pet status: \(error.localizedDescription)"
         }
+    }
+    
+    // Sample data for demo purposes
+    @MainActor
+    private func loadSamplePets() {
+        userPets = [
+            LostPet(
+                id: "1",
+                name: "Tommy",
+                breed: "Golden Retriever",
+                species: .dog,
+                age: 3,
+                color: "Golden",
+                size: .large,
+                description: "Friendly dog with a red collar",
+                lastSeenLocation: LocationData(
+                    latitude: 37.7749,
+                    longitude: -122.4194,
+                    address: "Golden Gate Park, San Francisco",
+                    city: "San Francisco",
+                    state: "CA"
+                ),
+                lastSeenDate: Calendar.current.date(byAdding: .day, value: -3, to: Date()) ?? Date(),
+                contactInfo: ContactInfo(
+                    phone: "+1234567890",
+                    email: "owner@example.com",
+                    preferredContactMethod: .phone
+                ),
+                ownerName: "John Doe",
+                photos: ["https://example.com/tommy.jpg"],
+                isActive: true,
+                reportedDate: Calendar.current.date(byAdding: .day, value: -3, to: Date()) ?? Date(),
+                rewardAmount: 500.0,
+                distinctiveFeatures: ["Red collar", "White patch on chest"],
+                temperament: "Friendly"
+            ),
+            LostPet(
+                id: "2",
+                name: "Max",
+                breed: "German Shepherd",
+                species: .dog,
+                age: 5,
+                color: "Brown and Black",
+                size: .large,
+                description: "Well-trained police dog",
+                lastSeenLocation: LocationData(
+                    latitude: 37.7849,
+                    longitude: -122.4094,
+                    address: "Mission District, San Francisco",
+                    city: "San Francisco",
+                    state: "CA"
+                ),
+                lastSeenDate: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date(),
+                contactInfo: ContactInfo(
+                    phone: "+1987654321",
+                    email: "owner2@example.com",
+                    preferredContactMethod: .both
+                ),
+                ownerName: "Jane Smith",
+                photos: ["https://example.com/max.jpg"],
+                isActive: false,
+                reportedDate: Calendar.current.date(byAdding: .day, value: -10, to: Date()) ?? Date(),
+                rewardAmount: 1000.0,
+                distinctiveFeatures: ["Blue collar with badge", "Scar on left ear"],
+                temperament: "Calm and obedient"
+            )
+        ]
+    }
+    
+    @MainActor
+    private func loadSampleSightings() {
+        userSightings = [
+            PetSighting(
+                id: "s1",
+                petId: "pet1",
+                reporterName: "Current User",
+                reporterContact: "user@example.com",
+                location: LocationData(
+                    latitude: 37.7649,
+                    longitude: -122.4194,
+                    address: "Dolores Park, San Francisco",
+                    city: "San Francisco",
+                    state: "CA"
+                ),
+                sightingDate: Calendar.current.date(byAdding: .day, value: -2, to: Date()) ?? Date(),
+                description: "Saw a husky-like dog running near the playground area",
+                confidence: .medium,
+                photos: ["https://example.com/sighting1.jpg"],
+                isVerified: false
+            ),
+            PetSighting(
+                id: "s2",
+                petId: "pet2",
+                reporterName: "Current User",
+                reporterContact: "user@example.com",
+                location: LocationData(
+                    latitude: 37.7749,
+                    longitude: -122.4294,
+                    address: "Castro District, San Francisco",
+                    city: "San Francisco",
+                    state: "CA"
+                ),
+                sightingDate: Calendar.current.date(byAdding: .day, value: -5, to: Date()) ?? Date(),
+                description: "Persian cat sitting under a parked car, looked well-fed",
+                confidence: .high,
+                photos: ["https://example.com/sighting2.jpg"],
+                isVerified: true
+            )
+        ]
     }
 }

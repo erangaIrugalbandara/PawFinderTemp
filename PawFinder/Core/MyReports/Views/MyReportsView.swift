@@ -2,43 +2,10 @@ import SwiftUI
 
 struct MyReportsView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var authViewModel: AuthViewModel
+    @StateObject private var viewModel = MyReportsViewModel()
     @State private var selectedTab: MyReportsTab = .lostPets
-
-    // Dummy Data
-    private let reportedPets: [ReportedPet] = [
-        ReportedPet(
-            name: "Tommy",
-            breed: "Golden Retriever",
-            daysMissing: 3,
-            sightings: 7,
-            views: 156,
-            image: "goldenretriever"
-        ),
-        ReportedPet(
-            name: "Max",
-            breed: "German Shepherd",
-            daysMissing: 0,
-            sightings: 15,
-            views: 200,
-            image: "germanshepherd",
-            found: true
-        )
-    ]
-
-    private let userSightings: [UserSighting] = [
-        UserSighting(
-            petName: "Bella",
-            breed: "Husky",
-            date: "Aug 10",
-            image: "husky"
-        ),
-        UserSighting(
-            petName: "Mittens",
-            breed: "Persian Cat",
-            date: "Jul 29",
-            image: "cat"
-        )
-    ]
+    @State private var showingShareSuccess = false
 
     var body: some View {
         ZStack {
@@ -74,7 +41,7 @@ struct MyReportsView: View {
                             .font(.system(size: 28, weight: .bold))
                             .foregroundColor(.white)
 
-                        Text("Helping 3 pets • 12 Contributions")
+                        Text("Helping \(viewModel.userPets.count) pets • \(viewModel.userSightings.count) Contributions")
                             .font(.system(size: 15, weight: .medium))
                             .foregroundColor(.white.opacity(0.85))
                     }
@@ -103,288 +70,145 @@ struct MyReportsView: View {
                     .cornerRadius(24)
                     .padding(.horizontal, 32)
 
-                    // Section
-                    if selectedTab == .lostPets {
-                        LostPetsSection(pets: reportedPets)
+                    // Content Section
+                    if viewModel.isLoading {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(1.5)
+                            .padding(.top, 50)
                     } else {
-                        SightingsSection(sightings: userSightings)
+                        VStack(spacing: 16) {
+                            if selectedTab == .lostPets {
+                                lostPetsSection
+                            } else {
+                                sightingsSection
+                            }
+                        }
+                        .padding(.horizontal, 20)
                     }
-
-                    // Community Hero Card
-                    CommunityHeroCard()
-
-                    // Start Helping Card
-                    StartHelpingCard()
                 }
-                .padding(.bottom, 32)
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        // No standard nav bar back button, only custom as per image2
+        .navigationBarHidden(true)
+        .task {
+            if let userId = authViewModel.currentUser?.id {
+                await viewModel.loadUserData(userId: userId)
+            }
+        }
+        .alert("Report Shared! 🎉", isPresented: $showingShareSuccess) {
+            Button("OK") { }
+        } message: {
+            Text("Your report has been shared! 🐾 Keep faith, every share brings us closer to reuniting pets with their families! 💕✨")
+        }
+    }
+    
+    // MARK: - Lost Pets Section
+    private var lostPetsSection: some View {
+        LazyVStack(spacing: 16) {
+            if viewModel.userPets.isEmpty {
+                emptyStateView(
+                    icon: "pawprint.fill",
+                    title: "No Lost Pets Reported",
+                    subtitle: "When you report a lost pet, it will appear here"
+                )
+            } else {
+                ForEach(viewModel.userPets) { pet in
+                    LostPetReportCard(
+                        pet: pet,
+                        onShare: {
+                            shareReport(pet: pet)
+                        },
+                        onMarkAsFound: {
+                            Task {
+                                await viewModel.markPetAsFound(petId: pet.id)
+                            }
+                        }
+                    )
+                }
+            }
+        }
+    }
+    
+    // MARK: - Sightings Section
+    private var sightingsSection: some View {
+        LazyVStack(spacing: 16) {
+            if viewModel.userSightings.isEmpty {
+                emptyStateView(
+                    icon: "eye.fill",
+                    title: "No Sightings Reported",
+                    subtitle: "When you report a pet sighting, it will appear here"
+                )
+            } else {
+                ForEach(viewModel.userSightings) { sighting in
+                    SightingReportCard(
+                        sighting: sighting,
+                        onShare: {
+                            shareSighting(sighting: sighting)
+                        }
+                    )
+                }
+            }
+        }
+    }
+    
+    // MARK: - Empty State View
+    private func emptyStateView(icon: String, title: String, subtitle: String) -> some View {
+        VStack(spacing: 16) {
+            Image(systemName: icon)
+                .font(.system(size: 40))
+                .foregroundColor(.white.opacity(0.6))
+            
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white)
+                
+                Text(subtitle)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white.opacity(0.8))
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(.vertical, 40)
+    }
+    
+    // MARK: - Share Functions
+    private func shareReport(pet: LostPet) {
+        // Simulate sharing functionality
+        let shareText = "🆘 MISSING PET ALERT 🆘\n\nName: \(pet.name)\nBreed: \(pet.breed)\nLast seen: \(pet.lastSeenLocation.address)\n\nPlease help us find \(pet.name)! 🙏"
+        
+        let activityVC = UIActivityViewController(activityItems: [shareText], applicationActivities: nil)
+        
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first {
+            window.rootViewController?.present(activityVC, animated: true) {
+                showingShareSuccess = true
+            }
+        }
+    }
+    
+    private func shareSighting(sighting: PetSighting) {
+        let shareText = "🐾 PET SIGHTING REPORT 🐾\n\nSighted: \(DateFormatter.shortDate.string(from: sighting.sightingDate))\nLocation: \(sighting.location.address)\nDescription: \(sighting.description)\n\nHelping reunite pets with their families! 💕"
+        
+        let activityVC = UIActivityViewController(activityItems: [shareText], applicationActivities: nil)
+        
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first {
+            window.rootViewController?.present(activityVC, animated: true) {
+                showingShareSuccess = true
+            }
+        }
     }
 }
 
-// MARK: - Tab Enum
+// MARK: - Supporting Enums
 enum MyReportsTab: CaseIterable {
     case lostPets, sightings
-
+    
     var title: String {
         switch self {
-        case .lostPets: return "My Lost Pets"
-        case .sightings: return "My Sightings"
+        case .lostPets: return "Lost Pets"
+        case .sightings: return "Sightings"
         }
     }
-}
-
-// MARK: - Dummy Models
-struct ReportedPet: Identifiable {
-    let id = UUID()
-    let name: String
-    let breed: String
-    let daysMissing: Int
-    let sightings: Int
-    let views: Int
-    let image: String
-    var found: Bool = false
-}
-
-struct UserSighting: Identifiable {
-    let id = UUID()
-    let petName: String
-    let breed: String
-    let date: String
-    let image: String
-}
-
-// MARK: - Lost Pets Section
-struct LostPetsSection: View {
-    let pets: [ReportedPet]
-
-    var body: some View {
-        VStack(spacing: 18) {
-            // Active Reports Card
-            if pets.contains(where: { !$0.found }) {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Image(systemName: "heart.fill")
-                            .foregroundColor(.red)
-                        Text("\(pets.filter{ !$0.found }.count) Active Reports")
-                            .font(.system(size: 17, weight: .semibold))
-                        Spacer()
-                        Button(action: {}) {
-                            Text("Share All")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(red: 0.4, green: 0.3, blue: 0.8))
-                        }
-                    }
-                    Text("Community is actively searching")
-                        .font(.system(size: 14))
-                        .foregroundColor(.gray)
-
-                    ForEach(pets.filter { !$0.found }) { pet in
-                        ReportedPetCard(pet: pet)
-                    }
-                }
-                .padding()
-                .background(Color.white)
-                .cornerRadius(18)
-                .shadow(color: Color.black.opacity(0.04), radius: 7, x: 0, y: 4)
-            }
-
-            // Found Pet Card(s)
-            ForEach(pets.filter { $0.found }) { pet in
-                FoundPetCard(pet: pet)
-            }
-        }
-        .padding(.horizontal, 22)
-    }
-}
-
-// MARK: - Sightings Section
-struct SightingsSection: View {
-    let sightings: [UserSighting]
-
-    var body: some View {
-        VStack(spacing: 18) {
-            if sightings.isEmpty {
-                Text("No sightings reported yet.")
-                    .font(.system(size: 16))
-                    .foregroundColor(.gray)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.white)
-                    .cornerRadius(18)
-            } else {
-                ForEach(sightings) { sighting in
-                    SightingCard(sighting: sighting)
-                }
-            }
-        }
-        .padding(.horizontal, 22)
-    }
-}
-
-// MARK: - Card Views
-struct ReportedPetCard: View {
-    let pet: ReportedPet
-    var body: some View {
-        HStack(spacing: 14) {
-            Image(pet.image)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: 65, height: 65)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-                )
-
-            VStack(alignment: .leading, spacing: 7) {
-                Text(pet.name)
-                    .font(.system(size: 18, weight: .bold))
-                Text(pet.breed)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.gray)
-                Text("Missing for \(pet.daysMissing) days")
-                    .font(.system(size: 13))
-                    .foregroundColor(.gray)
-                HStack(spacing: 18) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "eye.fill")
-                            .font(.system(size: 13))
-                            .foregroundColor(.blue)
-                        Text("\(pet.sightings) Sightings")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.blue)
-                    }
-                    HStack(spacing: 4) {
-                        Image(systemName: "person.2.fill")
-                            .font(.system(size: 13))
-                            .foregroundColor(.gray)
-                        Text("\(pet.views)")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.gray)
-                    }
-                }
-            }
-            Spacer()
-        }
-        .padding(10)
-        .background(Color.white)
-        .cornerRadius(14)
-        .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 2)
-    }
-}
-
-struct FoundPetCard: View {
-    let pet: ReportedPet
-    var body: some View {
-        HStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("🎉 \(pet.name) was found!")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(Color(red: 0.4, green: 0.3, blue: 0.8))
-                Text("Thanks to \(pet.sightings) community helpers")
-                    .font(.system(size: 14))
-                    .foregroundColor(.white)
-                    .padding(.vertical, 1)
-            }
-            Spacer()
-            Image(pet.image)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: 60, height: 60)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
-                )
-        }
-        .padding(18)
-        .background(Color(red: 0.4, green: 0.7, blue: 0.8))
-        .cornerRadius(14)
-        .shadow(color: Color.black.opacity(0.09), radius: 4, x: 0, y: 2)
-    }
-}
-
-struct CommunityHeroCard: View {
-    var body: some View {
-        HStack(spacing: 16) {
-            Image(systemName: "trophy.fill")
-                .font(.system(size: 30))
-                .foregroundColor(Color(red: 0.3, green: 0.7, blue: 0.7))
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Community Hero")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(.primary)
-                Text("Helped 5 pets to get closer to home")
-                    .font(.system(size: 14))
-                    .foregroundColor(.gray)
-            }
-            Spacer()
-        }
-        .padding(18)
-        .background(Color.white)
-        .cornerRadius(14)
-        .shadow(color: Color.black.opacity(0.08), radius: 4, x: 0, y: 2)
-        .padding(.horizontal, 22)
-    }
-}
-
-struct StartHelpingCard: View {
-    var body: some View {
-        HStack(spacing: 16) {
-            Image(systemName: "pawprint.fill")
-                .font(.system(size: 30))
-                .foregroundColor(Color(red: 0.4, green: 0.3, blue: 0.8))
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Start helping your community")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.primary)
-            }
-            Spacer()
-        }
-        .padding(18)
-        .background(Color.white)
-        .cornerRadius(14)
-        .shadow(color: Color.black.opacity(0.08), radius: 4, x: 0, y: 2)
-        .padding(.horizontal, 22)
-    }
-}
-
-struct SightingCard: View {
-    let sighting: UserSighting
-    var body: some View {
-        HStack(spacing: 14) {
-            Image(sighting.image)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: 50, height: 50)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-                )
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(sighting.petName)
-                    .font(.system(size: 16, weight: .bold))
-                Text(sighting.breed)
-                    .font(.system(size: 13))
-                    .foregroundColor(.gray)
-                Text("Reported: \(sighting.date)")
-                    .font(.system(size: 12))
-                    .foregroundColor(.gray)
-            }
-            Spacer()
-        }
-        .padding(10)
-        .background(Color.white)
-        .cornerRadius(14)
-        .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 2)
-    }
-}
-
-#Preview {
-    MyReportsView()
 }

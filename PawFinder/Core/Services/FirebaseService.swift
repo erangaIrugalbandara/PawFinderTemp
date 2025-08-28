@@ -85,11 +85,16 @@ class FirebaseService: ObservableObject {
             "foundDate": isActive ? FieldValue.delete() : FieldValue.serverTimestamp()
         ])
     }
+    
+    func fetchUserSightings(userId: String) async throws -> [PetSighting] {
+            // This would implement Firebase query to get sightings reported by user
+            // For now returning empty array - implement based on your Firebase structure
+            return []
+        }
 
     func submitSighting(_ sighting: PetSighting) async throws {
         try await db.collection("sightings").document(sighting.id).setData(from: sighting)
         
-        // Fix: Use "lostPets" collection name
         let petRef = db.collection("lostPets").document(sighting.petId)
         try await petRef.updateData([
             "sightingCount": FieldValue.increment(Int64(1)),

@@ -5,6 +5,12 @@ struct SearchNearbyView: View {
     @StateObject private var viewModel = SearchNearbyViewModel.shared
     @StateObject private var locationManager = LocationManager()
     @State private var showingFilters = false
+    @State private var dragOffset: CGFloat = 0
+    @State private var isExpanded = false
+    @Environment(\.presentationMode) var presentationMode
+    
+    private let minPetListHeight: CGFloat = 180 // Height for 2 pets
+    private let maxPetListHeight: CGFloat = 360 // Height for 4 pets
     
     var body: some View {
         NavigationView {
@@ -39,81 +45,147 @@ struct SearchNearbyView: View {
                     }
                     .padding()
                 } else {
-                    VStack(spacing: 0) {
-                        // Map View - Fixed parameters
-                        MapView(
-                            region: $viewModel.mapRegion,
-                            pets: viewModel.filteredPets,
-                            userLocation: locationManager.currentLocation,
-                            onPetSelected: { pet in
-                                viewModel.selectPet(pet)
-                            }
-                        )
-                        .frame(height: 300)
-                        
-                        // Pet List
-                        VStack(alignment: .leading, spacing: 0) {
-                            HStack {
-                                Text("Lost Pets Nearby")
-                                    .font(.title2)
-                                    .fontWeight(.bold)
-                                    .padding(.horizontal)
-                                
-                                Spacer()
-                                
-                                Button(action: {
-                                    showingFilters = true
-                                }) {
-                                    Image(systemName: "slider.horizontal.3")
-                                        .font(.title2)
-                                        .foregroundColor(.blue)
+                    GeometryReader { geometry in
+                        VStack(spacing: 0) {
+                            // Map View - Takes up remaining space after pet list
+                            MapView(
+                                region: $viewModel.mapRegion,
+                                pets: viewModel.filteredPets,
+                                userLocation: locationManager.currentLocation,
+                                onPetSelected: { pet in
+                                    viewModel.selectPet(pet)
                                 }
-                                .padding(.horizontal)
-                            }
-                            .padding(.vertical, 12)
+                            )
+                            .frame(height: geometry.size.height - (isExpanded ? maxPetListHeight : minPetListHeight))
+                            .animation(.easeInOut(duration: 0.3), value: isExpanded)
                             
-                            if viewModel.filteredPets.isEmpty {
-                                VStack(spacing: 16) {
-                                    Image(systemName: "pawprint.circle")
-                                        .font(.system(size: 60))
-                                        .foregroundColor(.gray)
+                            // Draggable Pet List Container
+                            VStack(alignment: .leading, spacing: 0) {
+                                // Drag handle
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(Color.gray.opacity(0.4))
+                                    .frame(width: 40, height: 6)
+                                    .padding(.top, 8)
+                                    .frame(maxWidth: .infinity)
+                                
+                                HStack {
+                                    Text("Lost Pets Nearby")
+                                        .font(.title2)
+                                        .fontWeight(.bold)
+                                        .padding(.horizontal)
                                     
-                                    Text("No lost pets found in your area")
-                                        .font(.headline)
-                                        .foregroundColor(.gray)
+                                    Spacer()
                                     
-                                    Text("Try adjusting your search filters or check back later")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                        .multilineTextAlignment(.center)
+                                    Button(action: {
+                                        showingFilters = true
+                                    }) {
+                                        Image(systemName: "slider.horizontal.3")
+                                            .font(.title2)
+                                            .foregroundColor(.blue)
+                                    }
+                                    .padding(.horizontal)
                                 }
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .padding()
-                            } else {
-                                ScrollView {
-                                    LazyVStack(spacing: 12) {
-                                        ForEach(viewModel.filteredPets) { pet in
-                                            // Fixed PetCardView - using custom implementation
-                                            PetListCardView(pet: pet) {
-                                                viewModel.showPetDetail(pet)
+                                .padding(.vertical, 12)
+                                
+                                if viewModel.filteredPets.isEmpty {
+                                    VStack(spacing: 16) {
+                                        Image(systemName: "pawprint.circle")
+                                            .font(.system(size: 60))
+                                            .foregroundColor(.gray)
+                                        
+                                        Text("No lost pets found in your area")
+                                            .font(.headline)
+                                            .foregroundColor(.gray)
+                                        
+                                        Text("Try adjusting your search filters or check back later")
+                                            .font(.subheadline)
+                                            .foregroundColor(.secondary)
+                                            .multilineTextAlignment(.center)
+                                    }
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .padding()
+                                } else {
+                                    ScrollView {
+                                        LazyVStack(spacing: 12) {
+                                            // Show only first 2 pets when collapsed, up to 4 when expanded
+                                            ForEach(Array(viewModel.filteredPets.prefix(isExpanded ? 4 : 2).enumerated()), id: \.element.id) { index, pet in
+                                                PetListCardView(pet: pet) {
+                                                    viewModel.showPetDetail(pet)
+                                                }
+                                                .padding(.horizontal)
                                             }
-                                            .padding(.horizontal)
+                                        }
+                                        .padding(.vertical, 8)
+                                    }
+                                    .frame(height: isExpanded ? maxPetListHeight - 60 : minPetListHeight - 60)
+                                    .clipped()
+                                }
+                            }
+                            .frame(height: isExpanded ? maxPetListHeight : minPetListHeight)
+                            .background(Color(.systemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
+                            .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: -5)
+                            .offset(y: dragOffset)
+                            .gesture(
+                                DragGesture()
+                                    .onChanged { value in
+                                        let translationY = value.translation.height
+                                        // Restrict dragging within bounds
+                                        if isExpanded {
+                                            // When expanded, allow dragging down to collapse
+                                            dragOffset = max(0, translationY)
+                                        } else {
+                                            // When collapsed, allow dragging up to expand
+                                            dragOffset = min(0, translationY)
                                         }
                                     }
-                                    .padding(.vertical, 8)
-                                }
-                            }
+                                    .onEnded { value in
+                                        let translationY = value.translation.height
+                                        
+                                        withAnimation(.easeInOut(duration: 0.3)) {
+                                            if isExpanded {
+                                                // If dragged down more than 50 points
+                                                if translationY > 50 {
+                                                    isExpanded = false
+                                                }
+                                            } else {
+                                                // If dragged up more than 50 points
+                                                if translationY < -50 {
+                                                    isExpanded = true
+                                                }
+                                            }
+                                            dragOffset = 0
+                                        }
+                                    }
+                            )
+                            .animation(.easeInOut(duration: 0.3), value: isExpanded)
                         }
-                        .background(Color(.systemBackground))
                     }
                 }
             }
             .navigationTitle("Search Nearby")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: {
+                        presentationMode.wrappedValue.dismiss()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .semibold))
+                            Text("Back")
+                                .font(.system(size: 17))
+                        }
+                        .foregroundColor(.black)
+                    }
+                }
+            }
             .refreshable {
                 viewModel.loadPetsFromDatabase()
             }
         }
+        .navigationViewStyle(StackNavigationViewStyle())
         .onAppear {
             viewModel.requestLocationPermission()
             viewModel.loadPetsFromDatabase()

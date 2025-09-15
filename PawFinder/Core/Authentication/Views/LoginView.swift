@@ -8,6 +8,7 @@ struct LoginView: View {
     @State private var password: String = ""
     @State private var rememberMe: Bool = false
     @State private var isAuthenticatingBiometric = false
+    @State private var showingBiometricSetupAlert = false
     
     var body: some View {
         ZStack {
@@ -55,7 +56,7 @@ struct LoginView: View {
                             .padding(.horizontal, 24)
                     }
                     
-                    // 🔥 MAIN BIOMETRIC LOGIN BUTTON - This is where you click to use Face ID/Touch ID
+                    // 🔥 MAIN BIOMETRIC LOGIN BUTTON - This will show if biometric is enabled
                     if authViewModel.isBiometricEnabled && authViewModel.biometricType != .none {
                         VStack(spacing: 20) {
                             // Large Biometric Button
@@ -104,14 +105,97 @@ struct LoginView: View {
                             .padding(.horizontal, 24)
                         }
                     }
+                    // 🔥 SETUP PROMOTION - Show this if biometric is available but not enabled
+                    else if authViewModel.biometricType != .none && !authViewModel.isBiometricEnabled {
+                        VStack(spacing: 20) {
+                            // Biometric Setup Promotion
+                            VStack(spacing: 12) {
+                                Image(systemName: authViewModel.biometricIcon)
+                                    .font(.system(size: 40))
+                                    .foregroundColor(.white.opacity(0.8))
+                                
+                                Text("Quick Access Available")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundColor(.white)
+                                
+                                Text("Set up \(authViewModel.biometricTypeName) for faster, secure login")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.8))
+                                    .multilineTextAlignment(.center)
+                            }
+                            .padding(20)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(Color.white.opacity(0.1))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 16)
+                                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                    )
+                            )
+                            .padding(.horizontal, 24)
+                            
+                            // Divider
+                            HStack {
+                                VStack { Divider().background(Color.white.opacity(0.3)) }
+                                Text("sign in with email to enable")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.7))
+                                    .padding(.horizontal, 8)
+                                VStack { Divider().background(Color.white.opacity(0.3)) }
+                            }
+                            .padding(.horizontal, 24)
+                        }
+                    }
                     
                     // Email/Password Form
                     VStack(spacing: 16) {
-                        CustomTextField(placeholder: "Email", text: $email, icon: "envelope.fill")
-                        CustomSecureField(placeholder: "Password", text: $password)
+                        // Email Field
+                        VStack(spacing: 8) {
+                            HStack {
+                                Image(systemName: "envelope.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white.opacity(0.7))
+                                    .frame(width: 20)
+                                
+                                TextField("Email", text: $email)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(.white)
+                                    .autocapitalization(.none)
+                                    .keyboardType(.emailAddress)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.white.opacity(0.2))
+                            )
+                        }
+                        
+                        // Password Field
+                        VStack(spacing: 8) {
+                            HStack {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white.opacity(0.7))
+                                    .frame(width: 20)
+                                
+                                SecureField("Password", text: $password)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(.white)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.white.opacity(0.2))
+                            )
+                        }
                         
                         // Remember Me & Forgot Password
                         HStack {
+                            // 🔥 SETUP BIOMETRIC CHECKBOX - This is key!
                             Button(action: {
                                 rememberMe.toggle()
                             }) {
@@ -120,9 +204,15 @@ struct LoginView: View {
                                         .font(.system(size: 16))
                                         .foregroundColor(.white)
                                     
-                                    Text("Remember me")
-                                        .font(.system(size: 14, weight: .medium))
-                                        .foregroundColor(.white.opacity(0.9))
+                                    if authViewModel.biometricType != .none && !authViewModel.isBiometricEnabled {
+                                        Text("Enable \(authViewModel.biometricTypeName)")
+                                            .font(.system(size: 14, weight: .medium))
+                                            .foregroundColor(.white.opacity(0.9))
+                                    } else {
+                                        Text("Remember me")
+                                            .font(.system(size: 14, weight: .medium))
+                                            .foregroundColor(.white.opacity(0.9))
+                                    }
                                 }
                             }
                             
@@ -144,15 +234,7 @@ struct LoginView: View {
                     
                     // Email Sign In Button
                     Button(action: {
-                        authViewModel.signIn(email: email, password: password)
-                        if rememberMe && authViewModel.biometricType != .none {
-                            // Enable biometric after successful login
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                                if authViewModel.isAuthenticated {
-                                    authViewModel.enableBiometricAuthentication(email: email)
-                                }
-                            }
-                        }
+                        signInWithEmail()
                     }) {
                         if authViewModel.isLoading {
                             ProgressView()
@@ -162,7 +244,8 @@ struct LoginView: View {
                                 .background(Color.white)
                                 .cornerRadius(28)
                         } else {
-                            Text("Sign In with Email")
+                            // 🔥 DYNAMIC BUTTON TEXT
+                            Text(buttonText)
                                 .font(.system(size: 18, weight: .semibold))
                                 .foregroundColor(Color(red: 0.4, green: 0.3, blue: 0.8))
                                 .frame(maxWidth: .infinity)
@@ -174,37 +257,6 @@ struct LoginView: View {
                     .disabled(!isFormValid || authViewModel.isLoading || isAuthenticatingBiometric)
                     .opacity(isFormValid && !authViewModel.isLoading && !isAuthenticatingBiometric ? 1.0 : 0.6)
                     .padding(.horizontal, 24)
-                    
-                    // Compact Biometric Button (Alternative style)
-                    if authViewModel.biometricType != .none && !authViewModel.isBiometricEnabled {
-                        Button(action: {
-                            // This will prompt to enable biometric after they log in
-                            if !email.isEmpty {
-                                authViewModel.signIn(email: email, password: password)
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                                    if authViewModel.isAuthenticated {
-                                        authViewModel.enableBiometricAuthentication(email: email)
-                                    }
-                                }
-                            } else {
-                                authViewModel.errorMessage = "Please enter your email first to set up \(authViewModel.biometricTypeName)"
-                            }
-                        }) {
-                            HStack(spacing: 12) {
-                                Image(systemName: authViewModel.biometricIcon)
-                                    .font(.system(size: 16))
-                                Text("Set up \(authViewModel.biometricTypeName)")
-                                    .font(.system(size: 16, weight: .medium))
-                            }
-                            .foregroundColor(.white.opacity(0.9))
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .stroke(Color.white.opacity(0.3), lineWidth: 1)
-                            )
-                        }
-                    }
                     
                     // Sign Up Link
                     HStack {
@@ -225,11 +277,22 @@ struct LoginView: View {
             }
         }
         .onAppear {
-            // Load saved email if remember me was enabled
-            if let savedEmail = UserDefaults.standard.string(forKey: "remembered_email") {
-                email = savedEmail
+            loadSavedEmail()
+        }
+        .onChange(of: authViewModel.shouldShowBiometricPrompt) { _, shouldShow in
+            if shouldShow {
+                showingBiometricSetupAlert = true
+            }
+        }
+        .alert("Set up \(authViewModel.biometricTypeName)?", isPresented: $showingBiometricSetupAlert) {
+            Button("Not Now", role: .cancel) {
+                authViewModel.markBiometricPromptShown()
+            }
+            Button("Set Up") {
                 rememberMe = true
             }
+        } message: {
+            Text("Enable \(authViewModel.biometricTypeName) for quick and secure access to PawFinder. You can always change this later in Settings.")
         }
     }
     
@@ -237,24 +300,58 @@ struct LoginView: View {
         !email.isEmpty && !password.isEmpty && email.contains("@")
     }
     
-    // 🔥 THIS IS THE FUNCTION THAT RUNS WHEN YOU TAP THE FACE ID BUTTON
+    private var buttonText: String {
+        if authViewModel.biometricType != .none && !authViewModel.isBiometricEnabled && rememberMe {
+            return "Sign In & Enable \(authViewModel.biometricTypeName)"
+        } else {
+            return "Sign In with Email"
+        }
+    }
+    
+    private func loadSavedEmail() {
+        if let savedEmail = UserDefaults.standard.string(forKey: "remembered_email") {
+            email = savedEmail
+            rememberMe = true
+        }
+        
+        // Debug print
+        print("🔐 LoginView appeared - BiometricEnabled: \(authViewModel.isBiometricEnabled), BiometricType: \(authViewModel.biometricType)")
+    }
+    
     private func authenticateWithBiometrics() {
+        guard !isAuthenticatingBiometric else { return }
+        
         isAuthenticatingBiometric = true
         authViewModel.errorMessage = nil
         
         Task {
             let success = await authViewModel.signInWithBiometrics()
             
-            DispatchQueue.main.async {
+            await MainActor.run {
                 self.isAuthenticatingBiometric = false
                 if success {
-                    // Success! User will be automatically navigated to dashboard
                     print("✅ Biometric authentication successful!")
                 } else {
-                    // Failed - error message will be shown automatically
                     print("❌ Biometric authentication failed")
                 }
             }
+        }
+    }
+    
+    private func signInWithEmail() {
+        guard isFormValid && !authViewModel.isLoading else { return }
+        
+        let shouldEnableBiometric = rememberMe && authViewModel.biometricType != .none && !authViewModel.isBiometricEnabled
+        
+        print("🔐 Signing in - EnableBiometric: \(shouldEnableBiometric), RememberMe: \(rememberMe)")
+        
+        authViewModel.signIn(email: email, password: password, enableBiometric: shouldEnableBiometric)
+        
+        // Save email for remember me (traditional remember me functionality)
+        if rememberMe && !shouldEnableBiometric {
+            UserDefaults.standard.set(email, forKey: "remembered_email")
+        } else if !rememberMe {
+            UserDefaults.standard.removeObject(forKey: "remembered_email")
         }
     }
 }

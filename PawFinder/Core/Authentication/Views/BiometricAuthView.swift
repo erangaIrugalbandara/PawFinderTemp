@@ -6,6 +6,7 @@ struct BiometricAuthView: View {
     @State private var showingMainAuth = false
     @State private var isAuthenticating = false
     @State private var showingBiometricSetup = false
+    @State private var hasAttemptedAutoAuth = false
     
     var body: some View {
         ZStack {
@@ -74,6 +75,7 @@ struct BiometricAuthView: View {
                                 Text(isAuthenticating ? "Authenticating..." : "Sign in with \(authViewModel.biometricTypeName)")
                                     .font(.system(size: 16, weight: .medium))
                                     .foregroundColor(.white.opacity(0.9))
+                                    .multilineTextAlignment(.center)
                             }
                             .frame(width: 220, height: 140)
                             .background(
@@ -159,6 +161,27 @@ struct BiometricAuthView: View {
                                 .stroke(Color.white.opacity(0.3), lineWidth: 1)
                         )
                     }
+                    
+                    // 🔥 NEW: Quick retry button if authentication fails
+                    if !isAuthenticating && authViewModel.isBiometricEnabled && authViewModel.biometricType != .none {
+                        Button(action: {
+                            authenticateWithBiometrics()
+                        }) {
+                            HStack {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 14))
+                                Text("Try Again")
+                                    .font(.system(size: 14, weight: .medium))
+                            }
+                            .foregroundColor(.white.opacity(0.7))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            )
+                        }
+                    }
                 }
                 
                 // Error message
@@ -189,13 +212,20 @@ struct BiometricAuthView: View {
                     showingMainAuth = true
                 }
             }
-            Button("Not Now", role: .cancel) { }
+            Button("Not Now", role: .cancel) {
+                authViewModel.markBiometricPromptShown()
+            }
         } message: {
             Text("Use \(authViewModel.biometricTypeName) for quick and secure access to PawFinder.")
         }
         .onAppear {
-            // Auto-trigger biometric authentication if enabled
-            if authViewModel.isBiometricEnabled && authViewModel.biometricType != .none && !isAuthenticating {
+            // Auto-trigger biometric authentication if enabled and haven't tried yet
+            if authViewModel.isBiometricEnabled &&
+               authViewModel.biometricType != .none &&
+               !isAuthenticating &&
+               !hasAttemptedAutoAuth {
+                
+                hasAttemptedAutoAuth = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     authenticateWithBiometrics()
                 }

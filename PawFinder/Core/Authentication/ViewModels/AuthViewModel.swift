@@ -3,6 +3,7 @@ import Foundation
 import FirebaseAuth
 import FirebaseFirestore
 import UserNotifications
+import LocalAuthentication
 
 // MARK: - User Model
 struct User: Codable, Identifiable {
@@ -32,18 +33,28 @@ struct User: Codable, Identifiable {
 // MARK: - Auth View Model
 class AuthViewModel: ObservableObject {
     @Published var isAuthenticated = false
+    @Published var isBiometricAuthenticated = false
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var currentUser: User?
+    @Published var biometricType: LABiometryType = .none
+    @Published var isBiometricEnabled = false
     
-    private var users: [User] = [] 
+    private var users: [User] = []
     
     private let auth = Auth.auth()
     private let db = Firestore.firestore()
     private var authStateListener: AuthStateDidChangeListenerHandle?
+    private let context = LAContext()
+    
+    // Keys for storing biometric preferences
+    private let biometricEnabledKey = "biometric_enabled"
+    private let storedEmailKey = "stored_email_for_biometric"
     
     init() {
         setupAuthStateListener()
+        checkBiometricAvailability()
+        loadBiometricSettings()
     }
     
     deinit {
@@ -51,6 +62,165 @@ class AuthViewModel: ObservableObject {
             Auth.auth().removeStateDidChangeListener(listener)
         }
     }
+    
+    // MARK: - Biometric Authentication Setup
+    
+    private func checkBiometricAvailability() {
+        var error: NSError?
+        
+        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
+            biometricType = context.biometryType
+        } else {
+            biometricType = .none
+        }
+    }
+    
+    private func loadBiometricSettings() {
+        isBiometricEnabled = UserDefaults.standard.bool(forKey: biometricEnabledKey)
+    }
+    
+    private func saveBiometricSettings() {
+        UserDefaults.standard.set(isBiometricEnabled, forKey: biometricEnabledKey)
+    }
+    
+    var biometricTypeName: String {
+        switch biometricType {
+        case .faceID:
+            return "Face ID"
+        case .touchID:
+            return "Touch ID"
+        case .opticID:
+            return "Optic ID"
+        default:
+            return "Biometric Authentication"
+        }
+    }
+    
+    var biometricIcon: String {
+        switch biometricType {
+        case .faceID:
+            return "faceid"
+        case .touchID:
+            return "touchid"
+        case .opticID:
+            return "opticid"
+        default:
+            return "lock.fill"
+        }
+    }
+    
+    // MARK: - Biometric Authentication Methods
+    
+    func enableBiometricAuthentication(email: String) {
+        guard biometricType != .none else {
+            errorMessage = "Biometric authentication is not available on this device"
+            return
+        }
+        
+        Task {
+            let success = await authenticateWithBiometrics(reason: "Enable \(biometricTypeName) for PawFinder")
+            
+            DispatchQueue.main.async {
+                if success {
+                    self.isBiometricEnabled = true
+                    UserDefaults.standard.set(email, forKey: self.storedEmailKey)
+                    self.saveBiometricSettings()
+                    self.errorMessage = "\(self.biometricTypeName) enabled successfully"
+                } else {
+                    self.errorMessage = "Failed to enable \(self.biometricTypeName)"
+                }
+            }
+        }
+    }
+    
+    func disableBiometricAuthentication() {
+        isBiometricEnabled = false
+        UserDefaults.standard.removeObject(forKey: storedEmailKey)
+        saveBiometricSettings()
+    }
+    
+    func authenticateWithBiometrics(reason: String = "Authenticate to access PawFinder") async -> Bool {
+        let context = LAContext()
+        context.localizedCancelTitle = "Use Password"
+        
+        var error: NSError?
+        
+        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
+            DispatchQueue.main.async {
+                self.errorMessage = error?.localizedDescription ?? "Biometric authentication not available"
+            }
+            return false
+        }
+        
+        do {
+            let success = try await context.evaluatePolicy(
+                .deviceOwnerAuthenticationWithBiometrics,
+                localizedReason: reason
+            )
+            
+            return success
+        } catch {
+            DispatchQueue.main.async {
+                self.errorMessage = error.localizedDescription
+            }
+            return false
+        }
+    }
+    
+    func authenticateWithDevicePasscode() async -> Bool {
+        let context = LAContext()
+        
+        do {
+            let success = try await context.evaluatePolicy(
+                .deviceOwnerAuthentication,
+                localizedReason: "Authenticate to access PawFinder"
+            )
+            
+            return success
+        } catch {
+            DispatchQueue.main.async {
+                self.errorMessage = error.localizedDescription
+            }
+            return false
+        }
+    }
+    
+    func signInWithBiometrics() {
+        guard let storedEmail = UserDefaults.standard.string(forKey: storedEmailKey) else {
+            errorMessage = "Please sign in with email and password first to set up \(biometricTypeName)"
+            return
+        }
+        
+        isLoading = true
+        errorMessage = nil
+        
+        Task {
+            let success = await authenticateWithBiometrics()
+            
+            DispatchQueue.main.async {
+                self.isLoading = false
+                
+                if success {
+                    // Check if user is already signed in with Firebase
+                    if let currentFirebaseUser = self.auth.currentUser,
+                       currentFirebaseUser.email == storedEmail {
+                        // User is already authenticated with Firebase
+                        self.fetchUserData(uid: currentFirebaseUser.uid)
+                        self.isBiometricAuthenticated = true
+                    } else {
+                        // Need to sign in with Firebase (this shouldn't happen in normal flow)
+                        self.errorMessage = "Please sign in with your password first to enable biometric authentication"
+                    }
+                }
+            }
+        }
+    }
+    
+    func setBiometricAuthenticated(_ authenticated: Bool) {
+        self.isBiometricAuthenticated = authenticated
+    }
+    
+    // MARK: - Original Authentication Methods
     
     private func setupAuthStateListener() {
         authStateListener = auth.addStateDidChangeListener { [weak self] _, user in
@@ -60,6 +230,7 @@ class AuthViewModel: ObservableObject {
                 } else {
                     self?.currentUser = nil
                     self?.isAuthenticated = false
+                    self?.isBiometricAuthenticated = false
                 }
             }
         }
@@ -97,6 +268,12 @@ class AuthViewModel: ObservableObject {
                 
                 // Create user document in Firestore
                 self?.createUserDocument(firebaseUser: firebaseUser, fullName: fullName)
+                
+                // After successful signup, store email for potential biometric setup
+                UserDefaults.standard.set(email, forKey: self?.storedEmailKey ?? "stored_email_for_biometric")
+                
+                // Set biometric authenticated to true since they just signed up
+                self?.isBiometricAuthenticated = true
             }
         }
     }
@@ -128,9 +305,22 @@ class AuthViewModel: ObservableObject {
 
                 // Fetch user data from Firestore
                 self?.fetchUserData(uid: firebaseUser.uid)
+                
+                // Set biometric authentication as completed since user signed in with password
+                self?.isBiometricAuthenticated = true
+
+                // Store email for potential biometric setup
+                UserDefaults.standard.set(email, forKey: self?.storedEmailKey ?? "stored_email_for_biometric")
 
                 // Trigger login notification
                 self?.notifyLoginSuccess()
+                
+                // Auto-enable biometric authentication if available and not already enabled
+                if self?.biometricType != .none && self?.isBiometricEnabled == false {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                        self?.enableBiometricAuthentication(email: email)
+                    }
+                }
             }
         }
     }
@@ -140,6 +330,7 @@ class AuthViewModel: ObservableObject {
             try auth.signOut()
             currentUser = nil
             isAuthenticated = false
+            isBiometricAuthenticated = false
         } catch {
             errorMessage = "Failed to sign out: \(error.localizedDescription)"
         }

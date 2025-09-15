@@ -6,6 +6,7 @@ struct LoginView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var rememberMe = false
+    @State private var isAuthenticatingBiometric = false
     
     var body: some View {
         ZStack {
@@ -44,6 +45,58 @@ struct LoginView: View {
                             .foregroundColor(.white.opacity(0.8))
                     }
                     
+                    // Face ID Button (show if biometric is available)
+                    if authViewModel.biometricType != .none {
+                        Button(action: {
+                            authenticateWithBiometrics()
+                        }) {
+                            HStack {
+                                if isAuthenticatingBiometric {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                        .scaleEffect(0.8)
+                                } else {
+                                    Image(systemName: authViewModel.biometricIcon)
+                                        .font(.system(size: 18))
+                                        .foregroundColor(.white)
+                                }
+                                
+                                Text(isAuthenticatingBiometric ? "Authenticating..." : "Sign in with \(authViewModel.biometricTypeName)")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.white)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(
+                                RoundedRectangle(cornerRadius: 28)
+                                    .fill(Color.white.opacity(0.2))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 28)
+                                            .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                                    )
+                            )
+                        }
+                        .disabled(isAuthenticatingBiometric)
+                        .padding(.horizontal, 24)
+                        
+                        // Divider
+                        HStack {
+                            Rectangle()
+                                .fill(Color.white.opacity(0.3))
+                                .frame(height: 1)
+                            
+                            Text("or")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.white.opacity(0.8))
+                                .padding(.horizontal, 16)
+                            
+                            Rectangle()
+                                .fill(Color.white.opacity(0.3))
+                                .frame(height: 1)
+                        }
+                        .padding(.horizontal, 24)
+                    }
+                    
                     // Error Message
                     if let errorMessage = authViewModel.errorMessage {
                         Text(errorMessage)
@@ -76,7 +129,11 @@ struct LoginView: View {
                             Spacer()
                             
                             Button("Forgot Password?") {
-                                // Handle forgot password
+                                if !email.isEmpty {
+                                    authViewModel.resetPassword(email: email)
+                                } else {
+                                    authViewModel.errorMessage = "Please enter your email first"
+                                }
                             }
                             .font(.system(size: 14, weight: .medium))
                             .foregroundColor(.white)
@@ -132,6 +189,29 @@ struct LoginView: View {
     
     private var isFormValid: Bool {
         !email.isEmpty && !password.isEmpty && email.contains("@")
+    }
+    
+    private func authenticateWithBiometrics() {
+        isAuthenticatingBiometric = true
+        
+        Task {
+            let success = await authViewModel.authenticateWithBiometrics()
+            
+            DispatchQueue.main.async {
+                self.isAuthenticatingBiometric = false
+                
+                if success {
+                    // If biometric auth succeeds but user isn't signed in to Firebase,
+                    // we need to handle this case
+                    if authViewModel.isAuthenticated {
+                        authViewModel.setBiometricAuthenticated(true)
+                    } else {
+                        // First time using Face ID - need to set up the connection
+                        authViewModel.errorMessage = "Please sign in with email and password first to set up Face ID"
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -5,11 +5,18 @@ struct ContentView: View {
     
     var body: some View {
         NavigationView {
-            if authViewModel.isAuthenticated {
-                DashboardView()
-                    .environmentObject(authViewModel)
-            } else {
-                WelcomeView()
+            Group {
+                if authViewModel.isAuthenticated {
+                    if authViewModel.isBiometricAuthenticated {
+                        DashboardView()
+                            .environmentObject(authViewModel)
+                    } else {
+                        BiometricAuthView()
+                            .environmentObject(authViewModel)
+                    }
+                } else {
+                    WelcomeView()
+                }
             }
         }
         .navigationBarHidden(true)

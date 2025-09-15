@@ -7,11 +7,12 @@ struct ContentView: View {
         NavigationView {
             Group {
                 if authViewModel.isAuthenticated {
-                    if authViewModel.isBiometricAuthenticated {
-                        DashboardView()
+                    // If user is authenticated but biometric is enabled and not authenticated with biometric
+                    if authViewModel.isBiometricEnabled && !authViewModel.isBiometricAuthenticated {
+                        BiometricAuthView()
                             .environmentObject(authViewModel)
                     } else {
-                        BiometricAuthView()
+                        DashboardView()
                             .environmentObject(authViewModel)
                     }
                 } else {

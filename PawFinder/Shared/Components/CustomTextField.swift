@@ -8,8 +8,8 @@ struct CustomTextField: View {
     var body: some View {
         HStack(spacing: 16) {
             Image(systemName: icon)
-                .font(.system(size: 18, weight: .medium))
-                .foregroundColor(.white.opacity(0.8))
+                .font(.system(size: 18))
+                .foregroundColor(.white.opacity(0.7))
                 .frame(width: 20)
             
             TextField(placeholder, text: $text)
@@ -17,24 +17,19 @@ struct CustomTextField: View {
                 .foregroundColor(.white)
                 .autocapitalization(.none)
                 .disableAutocorrection(true)
+                .keyboardType(icon.contains("envelope") ? .emailAddress : .default)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
         .background(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 16)
                 .fill(Color.white.opacity(0.15))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.3), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.white.opacity(0.2), lineWidth: 1)
         )
     }
 }
 
-#Preview {
-    ZStack {
-        Color.purple
-        CustomTextField(placeholder: "Email", text: .constant(""), icon: "envelope.fill")
-            .padding()
-    }
-}
+

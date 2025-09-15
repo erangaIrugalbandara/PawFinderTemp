@@ -205,10 +205,16 @@ struct BiometricAuthView: View {
     
     private func authenticateWithBiometrics() {
         isAuthenticating = true
-        authViewModel.signInWithBiometrics()
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            isAuthenticating = false
+        Task {
+            let success = await authViewModel.signInWithBiometrics()
+            
+            DispatchQueue.main.async {
+                self.isAuthenticating = false
+                if success {
+                    authViewModel.setBiometricAuthenticated(true)
+                }
+            }
         }
     }
     
@@ -216,7 +222,7 @@ struct BiometricAuthView: View {
         isAuthenticating = true
         
         Task {
-            let success = await authViewModel.authenticateWithDevicePasscode()
+            let success = await authViewModel.authenticateWithBiometrics(reason: "Use device passcode to sign in to PawFinder")
             
             DispatchQueue.main.async {
                 self.isAuthenticating = false

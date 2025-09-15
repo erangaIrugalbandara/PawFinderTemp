@@ -40,8 +40,6 @@ class AuthViewModel: ObservableObject {
     @Published var biometricType: LABiometryType = .none
     @Published var isBiometricEnabled = false
     
-    private var users: [User] = []
-    
     private let auth = Auth.auth()
     private let db = Firestore.firestore()
     private var authStateListener: AuthStateDidChangeListenerHandle?
@@ -50,6 +48,7 @@ class AuthViewModel: ObservableObject {
     // Keys for storing biometric preferences
     private let biometricEnabledKey = "biometric_enabled"
     private let storedEmailKey = "stored_email_for_biometric"
+    private let rememberedEmailKey = "remembered_email"
     
     init() {
         setupAuthStateListener()
@@ -60,6 +59,26 @@ class AuthViewModel: ObservableObject {
     deinit {
         if let listener = authStateListener {
             Auth.auth().removeStateDidChangeListener(listener)
+        }
+    }
+    
+    // MARK: - Auth State Management
+    
+    private func setupAuthStateListener() {
+        authStateListener = auth.addStateDidChangeListener { [weak self] _, user in
+            DispatchQueue.main.async {
+                self?.isAuthenticated = user != nil
+                if let user = user {
+                    self?.fetchUserData(uid: user.uid)
+                    // If biometric is enabled and user is authenticated, mark biometric as authenticated too
+                    if self?.isBiometricEnabled == true {
+                        self?.isBiometricAuthenticated = true
+                    }
+                } else {
+                    self?.currentUser = nil
+                    self?.isBiometricAuthenticated = false
+                }
+            }
         }
     }
     
@@ -123,9 +142,9 @@ class AuthViewModel: ObservableObject {
             DispatchQueue.main.async {
                 if success {
                     self.isBiometricEnabled = true
-                    UserDefaults.standard.set(email, forKey: self.storedEmailKey)
                     self.saveBiometricSettings()
-                    self.errorMessage = "\(self.biometricTypeName) enabled successfully"
+                    UserDefaults.standard.set(email, forKey: self.storedEmailKey)
+                    self.errorMessage = nil
                 } else {
                     self.errorMessage = "Failed to enable \(self.biometricTypeName)"
                 }
@@ -135,118 +154,85 @@ class AuthViewModel: ObservableObject {
     
     func disableBiometricAuthentication() {
         isBiometricEnabled = false
-        UserDefaults.standard.removeObject(forKey: storedEmailKey)
         saveBiometricSettings()
+        UserDefaults.standard.removeObject(forKey: storedEmailKey)
+        isBiometricAuthenticated = false
+    }
+    
+    @MainActor
+    func signInWithBiometrics() async -> Bool {
+        guard isBiometricEnabled, biometricType != .none else {
+            errorMessage = "Biometric authentication is not enabled"
+            return false
+        }
+        
+        guard let storedEmail = UserDefaults.standard.string(forKey: storedEmailKey) else {
+            errorMessage = "No stored email found for biometric authentication"
+            return false
+        }
+        
+        let success = await authenticateWithBiometrics(reason: "Sign in to PawFinder")
+        
+        if success {
+            // Check if user is already signed in to Firebase
+            if auth.currentUser != nil {
+                isBiometricAuthenticated = true
+                errorMessage = nil
+                return true
+            } else {
+                // If not signed in, redirect to email/password login
+                errorMessage = "Please sign in with your email and password first"
+                return false
+            }
+        } else {
+            errorMessage = "Biometric authentication failed"
+            return false
+        }
     }
     
     func authenticateWithBiometrics(reason: String = "Authenticate to access PawFinder") async -> Bool {
-        let context = LAContext()
-        context.localizedCancelTitle = "Use Password"
-        
-        var error: NSError?
-        
-        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
-            DispatchQueue.main.async {
-                self.errorMessage = error?.localizedDescription ?? "Biometric authentication not available"
-            }
-            return false
-        }
+        guard biometricType != .none else { return false }
         
         do {
             let success = try await context.evaluatePolicy(
                 .deviceOwnerAuthenticationWithBiometrics,
                 localizedReason: reason
             )
-            
             return success
         } catch {
             DispatchQueue.main.async {
                 self.errorMessage = error.localizedDescription
             }
             return false
-        }
-    }
-    
-    func authenticateWithDevicePasscode() async -> Bool {
-        let context = LAContext()
-        
-        do {
-            let success = try await context.evaluatePolicy(
-                .deviceOwnerAuthentication,
-                localizedReason: "Authenticate to access PawFinder"
-            )
-            
-            return success
-        } catch {
-            DispatchQueue.main.async {
-                self.errorMessage = error.localizedDescription
-            }
-            return false
-        }
-    }
-    
-    func signInWithBiometrics() {
-        guard let storedEmail = UserDefaults.standard.string(forKey: storedEmailKey) else {
-            errorMessage = "Please sign in with email and password first to set up \(biometricTypeName)"
-            return
-        }
-        
-        isLoading = true
-        errorMessage = nil
-        
-        Task {
-            let success = await authenticateWithBiometrics()
-            
-            DispatchQueue.main.async {
-                self.isLoading = false
-                
-                if success {
-                    // Check if user is already signed in with Firebase
-                    if let currentFirebaseUser = self.auth.currentUser,
-                       currentFirebaseUser.email == storedEmail {
-                        // User is already authenticated with Firebase
-                        self.fetchUserData(uid: currentFirebaseUser.uid)
-                        self.isBiometricAuthenticated = true
-                    } else {
-                        // Need to sign in with Firebase (this shouldn't happen in normal flow)
-                        self.errorMessage = "Please sign in with your password first to enable biometric authentication"
-                    }
-                }
-            }
         }
     }
     
     func setBiometricAuthenticated(_ authenticated: Bool) {
-        self.isBiometricAuthenticated = authenticated
+        isBiometricAuthenticated = authenticated
     }
     
-    // MARK: - Original Authentication Methods
+    // MARK: - Firebase Authentication Methods
     
-    private func setupAuthStateListener() {
-        authStateListener = auth.addStateDidChangeListener { [weak self] _, user in
+    func signIn(email: String, password: String) {
+        isLoading = true
+        errorMessage = nil
+        
+        auth.signIn(withEmail: email, password: password) { [weak self] result, error in
             DispatchQueue.main.async {
-                if let user = user {
-                    self?.fetchUserData(uid: user.uid)
+                self?.isLoading = false
+                
+                if let error = error {
+                    self?.errorMessage = self?.getErrorMessage(from: error)
                 } else {
-                    self?.currentUser = nil
-                    self?.isAuthenticated = false
-                    self?.isBiometricAuthenticated = false
+                    // Save email for remember me functionality
+                    UserDefaults.standard.set(email, forKey: self?.rememberedEmailKey ?? "")
+                    self?.errorMessage = nil
                 }
             }
         }
     }
     
     func signUp(email: String, password: String, fullName: String) {
-        guard !email.isEmpty, !password.isEmpty, !fullName.isEmpty else {
-            errorMessage = "Please fill in all fields"
-            return
-        }
-        
-        guard password.count >= 6 else {
-            errorMessage = "Password must be at least 6 characters"
-            return
-        }
-        
         isLoading = true
         errorMessage = nil
         
@@ -255,71 +241,10 @@ class AuthViewModel: ObservableObject {
                 self?.isLoading = false
                 
                 if let error = error {
-                    print("Error during account creation: \(error.localizedDescription)")
-                    self?.errorMessage = error.localizedDescription
-                    return
-                }
-                
-                guard let firebaseUser = result?.user else {
-                    print("Error: Failed to create Firebase user.")
-                    self?.errorMessage = "Failed to create user"
-                    return
-                }
-                
-                // Create user document in Firestore
-                self?.createUserDocument(firebaseUser: firebaseUser, fullName: fullName)
-                
-                // After successful signup, store email for potential biometric setup
-                UserDefaults.standard.set(email, forKey: self?.storedEmailKey ?? "stored_email_for_biometric")
-                
-                // Set biometric authenticated to true since they just signed up
-                self?.isBiometricAuthenticated = true
-            }
-        }
-    }
-    
-    func signIn(email: String, password: String) {
-        guard !email.isEmpty, !password.isEmpty else {
-            errorMessage = "Please enter both email and password"
-            return
-        }
-
-        isLoading = true
-        errorMessage = nil
-
-        auth.signIn(withEmail: email, password: password) { [weak self] result, error in
-            DispatchQueue.main.async {
-                self?.isLoading = false
-
-                if let error = error {
-                    print("Error during login: \(error.localizedDescription)")
-                    self?.errorMessage = "Login failed: \(error.localizedDescription)"
-                    return
-                }
-
-                guard let firebaseUser = result?.user else {
-                    print("Error: Firebase user not found")
-                    self?.errorMessage = "Login failed: User not found"
-                    return
-                }
-
-                // Fetch user data from Firestore
-                self?.fetchUserData(uid: firebaseUser.uid)
-                
-                // Set biometric authentication as completed since user signed in with password
-                self?.isBiometricAuthenticated = true
-
-                // Store email for potential biometric setup
-                UserDefaults.standard.set(email, forKey: self?.storedEmailKey ?? "stored_email_for_biometric")
-
-                // Trigger login notification
-                self?.notifyLoginSuccess()
-                
-                // Auto-enable biometric authentication if available and not already enabled
-                if self?.biometricType != .none && self?.isBiometricEnabled == false {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                        self?.enableBiometricAuthentication(email: email)
-                    }
+                    self?.errorMessage = self?.getErrorMessage(from: error)
+                } else if let firebaseUser = result?.user {
+                    self?.createUserDocument(firebaseUser: firebaseUser, fullName: fullName)
+                    self?.errorMessage = nil
                 }
             }
         }
@@ -328,113 +253,109 @@ class AuthViewModel: ObservableObject {
     func signOut() {
         do {
             try auth.signOut()
-            currentUser = nil
-            isAuthenticated = false
             isBiometricAuthenticated = false
+            currentUser = nil
         } catch {
-            errorMessage = "Failed to sign out: \(error.localizedDescription)"
+            errorMessage = "Failed to sign out"
         }
     }
     
     func resetPassword(email: String) {
-        guard !email.isEmpty else {
-            errorMessage = "Please enter your email"
-            return
-        }
-        
         auth.sendPasswordReset(withEmail: email) { [weak self] error in
             DispatchQueue.main.async {
                 if let error = error {
-                    self?.errorMessage = error.localizedDescription
+                    self?.errorMessage = self?.getErrorMessage(from: error)
                 } else {
-                    self?.errorMessage = "Password reset email sent!"
+                    self?.errorMessage = "Password reset email sent successfully"
                 }
             }
         }
     }
+    
+    // MARK: - Firestore Methods
     
     private func createUserDocument(firebaseUser: FirebaseAuth.User, fullName: String) {
         let user = User(firebaseUser: firebaseUser, fullName: fullName)
         
         do {
-            try db.collection("users").document(firebaseUser.uid).setData(from: user) { [weak self] error in
-                DispatchQueue.main.async {
-                    if let error = error {
-                        print("Error during Firestore document creation: \(error.localizedDescription)")
-                        self?.errorMessage = "Failed to save user data: \(error.localizedDescription)"
-                    } else {
-                        self?.currentUser = user
-                        self?.isAuthenticated = true
-                    }
-                }
-            }
+            try db.collection("users").document(user.id).setData(from: user)
+            currentUser = user
         } catch {
-            DispatchQueue.main.async {
-                print("Error during user serialization: \(error.localizedDescription)")
-                self.errorMessage = "Failed to create user: \(error.localizedDescription)"
-            }
+            errorMessage = "Failed to create user profile"
         }
     }
     
     private func fetchUserData(uid: String) {
         db.collection("users").document(uid).getDocument { [weak self] document, error in
             DispatchQueue.main.async {
-                if let error = error {
-                    self?.errorMessage = "Failed to fetch user data: \(error.localizedDescription)"
-                    return
-                }
-                
-                guard let document = document, document.exists else {
-                    self?.errorMessage = "User document not found"
-                    return
-                }
-                
-                do {
-                    let user = try document.data(as: User.self)
-                    self?.currentUser = user
-                    self?.isAuthenticated = true
-                } catch {
-                    self?.errorMessage = "Failed to decode user data: \(error.localizedDescription)"
+                if let document = document, document.exists {
+                    do {
+                        self?.currentUser = try document.data(as: User.self)
+                    } catch {
+                        print("Error decoding user: \(error)")
+                    }
                 }
             }
         }
     }
     
-    func updateProfile(fullName: String, phoneNumber: String?) {
-        guard let currentUser = currentUser else { return }
+    // Add this method to your AuthViewModel class if it doesn't exist
+    func authenticateWithDevicePasscode() async -> Bool {
+        let context = LAContext()
+        var error: NSError?
         
-        isLoading = true
-        
-        let updateData: [String: Any] = [
-            "fullName": fullName,
-            "phoneNumber": phoneNumber ?? ""
-        ]
-        
-        db.collection("users").document(currentUser.id).updateData(updateData) { [weak self] error in
+        // Check if device passcode is available
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
             DispatchQueue.main.async {
-                self?.isLoading = false
-                
-                if let error = error {
-                    self?.errorMessage = "Failed to update profile: \(error.localizedDescription)"
-                } else {
-                    // Refresh user data
-                    self?.fetchUserData(uid: currentUser.id)
+                self.errorMessage = "Device passcode authentication is not available"
+            }
+            return false
+        }
+        
+        do {
+            let success = try await context.evaluatePolicy(
+                .deviceOwnerAuthentication,
+                localizedReason: "Use device passcode to sign in to PawFinder"
+            )
+            
+            if success {
+                DispatchQueue.main.async {
+                    self.isBiometricAuthenticated = true
+                    self.errorMessage = nil
                 }
             }
+            
+            return success
+        } catch {
+            DispatchQueue.main.async {
+                self.errorMessage = error.localizedDescription
+            }
+            return false
         }
     }
     
-    func notifyLoginSuccess() {
-        let content = UNMutableNotificationContent()
-        content.title = "Welcome!"
-        content.body = "You have successfully logged in."
-        content.sound = .default
+    // MARK: - Helper Methods
+    
+    private func getErrorMessage(from error: Error) -> String {
+        let nsError = error as NSError
         
-        let request = UNNotificationRequest(identifier: "loginSuccess", content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("Error scheduling login notification: \(error.localizedDescription)")
-            }
+        switch nsError.code {
+        case AuthErrorCode.emailAlreadyInUse.rawValue:
+            return "This email is already registered"
+        case AuthErrorCode.weakPassword.rawValue:
+            return "Password should be at least 6 characters"
+        case AuthErrorCode.invalidEmail.rawValue:
+            return "Please enter a valid email address"
+        case AuthErrorCode.userNotFound.rawValue, AuthErrorCode.wrongPassword.rawValue:
+            return "Invalid email or password"
+        case AuthErrorCode.userDisabled.rawValue:
+            return "This account has been disabled"
+        case AuthErrorCode.tooManyRequests.rawValue:
+            return "Too many attempts. Please try again later"
+        case AuthErrorCode.networkError.rawValue:
+            return "Network error. Please check your connection"
+        default:
+            return error.localizedDescription
         }
     }
 }

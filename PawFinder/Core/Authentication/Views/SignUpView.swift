@@ -3,15 +3,14 @@ import SwiftUI
 struct SignUpView: View {
     @Binding var showingLogin: Bool
     @EnvironmentObject var authViewModel: AuthViewModel
+    
     @State private var email = ""
     @State private var password = ""
     @State private var confirmPassword = ""
     @State private var fullName = ""
-    @State private var agreedToTerms = false
     
     var body: some View {
         ZStack {
-            // Gradient Background
             LinearGradient(
                 gradient: Gradient(colors: [
                     Color(red: 0.4, green: 0.3, blue: 0.8),
@@ -23,9 +22,11 @@ struct SignUpView: View {
             .ignoresSafeArea()
             
             ScrollView {
-                VStack(spacing: 24) {
+                VStack(spacing: 32) {
+                    Spacer()
+                    
                     // Header
-                    VStack(spacing: 8) {
+                    VStack(spacing: 12) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 20)
                                 .fill(Color.white.opacity(0.2))
@@ -35,15 +36,15 @@ struct SignUpView: View {
                                 .font(.system(size: 35))
                                 .foregroundColor(.white)
                         }
-                        .padding(.top, 60)
                         
-                        Text("Create Account")
-                            .font(.system(size: 28, weight: .bold))
+                        Text("Join PawFinder")
+                            .font(.system(size: 32, weight: .bold))
                             .foregroundColor(.white)
                         
-                        Text("Join the PawFind community")
+                        Text("Help reunite pets with their families")
                             .font(.system(size: 16, weight: .medium))
                             .foregroundColor(.white.opacity(0.8))
+                            .multilineTextAlignment(.center)
                     }
                     .padding(.bottom, 20)
                     
@@ -53,38 +54,147 @@ struct SignUpView: View {
                             .foregroundColor(.red)
                             .font(.system(size: 14, weight: .medium))
                             .padding(.horizontal, 24)
+                            .multilineTextAlignment(.center)
                     }
                     
-                    // Form
+                    // Form Fields
                     VStack(spacing: 16) {
-                        CustomTextField(placeholder: "Full Name", text: $fullName, icon: "person.fill")
-                        CustomTextField(placeholder: "Email", text: $email, icon: "envelope.fill")
-                        CustomSecureField(placeholder: "Password", text: $password)
-                        CustomSecureField(placeholder: "Confirm Password", text: $confirmPassword)
+                        // Full Name Field
+                        VStack(spacing: 8) {
+                            HStack {
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white.opacity(0.7))
+                                    .frame(width: 20)
+                                
+                                TextField("Full Name", text: $fullName)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(.white)
+                                    .autocapitalization(.words)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.white.opacity(0.2))
+                            )
+                        }
                         
-                        // Terms Agreement
-                        HStack(alignment: .top, spacing: 12) {
-                            Button(action: {
-                                agreedToTerms.toggle()
-                            }) {
-                                Image(systemName: agreedToTerms ? "checkmark.square.fill" : "square")
-                                    .font(.system(size: 20))
+                        // Email Field
+                        VStack(spacing: 8) {
+                            HStack {
+                                Image(systemName: "envelope.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white.opacity(0.7))
+                                    .frame(width: 20)
+                                
+                                TextField("Email", text: $email)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(.white)
+                                    .autocapitalization(.none)
+                                    .keyboardType(.emailAddress)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.white.opacity(0.2))
+                            )
+                        }
+                        
+                        // Password Field
+                        VStack(spacing: 8) {
+                            HStack {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white.opacity(0.7))
+                                    .frame(width: 20)
+                                
+                                SecureField("Password (min 6 characters)", text: $password)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .font(.system(size: 16, weight: .medium))
                                     .foregroundColor(.white)
                             }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.white.opacity(0.2))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(
+                                                !password.isEmpty && password.count < 6 ?
+                                                Color.red.opacity(0.6) :
+                                                Color.clear,
+                                                lineWidth: 1
+                                            )
+                                    )
+                            )
                             
-                            Text("I agree to the Terms of Service and Privacy Policy")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.white.opacity(0.9))
-                                .multilineTextAlignment(.leading)
+                            if !password.isEmpty && password.count < 6 {
+                                HStack {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.red)
+                                    Text("Password must be at least 6 characters")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundColor(.red)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.leading, 4)
+                            }
+                        }
+                        
+                        // Confirm Password Field
+                        VStack(spacing: 8) {
+                            HStack {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white.opacity(0.7))
+                                    .frame(width: 20)
+                                
+                                SecureField("Confirm Password", text: $confirmPassword)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(.white)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.white.opacity(0.2))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(
+                                                !confirmPassword.isEmpty && confirmPassword != password ?
+                                                Color.red.opacity(0.6) :
+                                                Color.clear,
+                                                lineWidth: 1
+                                            )
+                                    )
+                            )
                             
-                            Spacer()
+                            if !confirmPassword.isEmpty && confirmPassword != password {
+                                HStack {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.red)
+                                    Text("Passwords do not match")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundColor(.red)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.leading, 4)
+                            }
                         }
                     }
                     .padding(.horizontal, 24)
                     
-                    // Sign Up Button
+                    // Create Account Button
                     Button(action: {
-                        authViewModel.signUp(email: email, password: password, fullName: fullName)
+                        signUp()
                     }) {
                         if authViewModel.isLoading {
                             ProgressView()
@@ -107,7 +217,7 @@ struct SignUpView: View {
                     .opacity(isFormValid && !authViewModel.isLoading ? 1.0 : 0.6)
                     .padding(.horizontal, 24)
                     
-                    // Login Link
+                    // Sign In Link
                     HStack {
                         Text("Already have an account?")
                             .font(.system(size: 16, weight: .medium))
@@ -125,17 +235,30 @@ struct SignUpView: View {
                 }
             }
         }
+        .alert("Enable Biometric Authentication?", isPresented: .constant(authViewModel.isAuthenticated && authViewModel.isBiometricAvailable && !authViewModel.isBiometricEnabled)) {
+            Button("Not Now", role: .cancel) { }
+            Button("Enable") {
+                // Navigate to profile settings
+            }
+        } message: {
+            Text("Enable \(authViewModel.biometricName) for faster login in your Profile settings.")
+        }
     }
     
     private var isFormValid: Bool {
-        !email.isEmpty &&
-        !password.isEmpty &&
-        !confirmPassword.isEmpty &&
-        !fullName.isEmpty &&
-        password == confirmPassword &&
-        password.count >= 6 &&
-        agreedToTerms &&
-        email.contains("@")
+        return !fullName.isEmpty &&
+               !email.isEmpty &&
+               !password.isEmpty &&
+               !confirmPassword.isEmpty &&
+               password == confirmPassword &&
+               password.count >= 6 &&
+               email.contains("@")
+    }
+    
+    private func signUp() {
+        guard isFormValid && !authViewModel.isLoading else { return }
+        
+        authViewModel.signUp(email: email, password: password, fullName: fullName)
     }
 }
 

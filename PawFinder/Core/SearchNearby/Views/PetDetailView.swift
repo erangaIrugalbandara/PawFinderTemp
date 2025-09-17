@@ -634,6 +634,7 @@ struct ModernDetailRow: View {
     PetDetailView(
         pet: LostPet(
             id: "1",
+            ownerId: "preview_owner_123", // ✅ Added missing ownerId parameter
             name: "Buddy",
             breed: "Golden Retriever",
             species: PetSpecies.dog,
